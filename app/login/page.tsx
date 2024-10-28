@@ -1,5 +1,7 @@
+'use client';
 import AuthForm from '../../components/auth-form';
 import { getBaseUrl } from '../utils/config';
+import { signIn } from 'next-auth/react';
 
 export default function LoginPage() {
   const handleGoogleSignIn = async () => {

@@ -28,7 +28,7 @@ export default function InviteTeamMember({ teamId, onClose }: InviteTeamMemberPr
 
   useEffect(() => {
     fetchTeamMembers();
-  }, [teamId]);
+  }, [teamId, fetchTeamMembers]); // Add fetchTeamMembers to the dependency array
 
   const fetchTeamMembers = async () => {
     try {
