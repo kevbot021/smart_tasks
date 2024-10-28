@@ -33,7 +33,7 @@ interface Task {
   team_id: string
   sub_tasks?: Subtask[]
   audio_summary?: string
-  cartoon_slides?: string[]
+  cartoon_slides?: string[]  // Add this line to fix the type error
 }
 
 interface Subtask {
