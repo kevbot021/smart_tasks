@@ -43,7 +43,7 @@ export async function POST(req: Request) {
             content: JSON.stringify({
               task: taskContext.task,
               subtasks: taskContext.subtasks,
-              request: "Please analyze this task and provide guidance."
+              request: "Please help me analyze and break down this task."
             })
           }
         );
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
             thread.id,
             {
               role: "user",
-              content: message
+              content: `User selected: ${message}. Please continue analyzing the task based on this choice.`
             }
           );
         }
@@ -66,16 +66,28 @@ export async function POST(req: Request) {
         {
           assistant_id: process.env.OPENAI_ASSISTANT_ID,
           instructions: `
-            You are a task analysis assistant. Analyze the task and provide guidance.
+            You are a task analysis assistant helping users break down their tasks.
+            
+            For the initial message:
+            1. Understand the task context
+            2. Ask a relevant question to help break down the task
+            3. Provide 2-4 specific response options
+            
+            For follow-up messages:
+            1. Consider the user's previous selection
+            2. Ask a more specific follow-up question
+            3. Provide new, relevant options based on their choice
+            
             Always respond with a valid JSON object in this exact format:
             {
-              "question": "A clear question about the task",
-              "options": ["2-4 specific response options"],
+              "question": "Your specific question about the task",
+              "options": ["2-4 contextual response options"],
               "assessment": "continuing",
               "confidence_score": 0
             }
-            
-            Ensure your response is valid JSON and matches this format exactly.
+
+            Make each question and set of options unique and relevant to the conversation flow.
+            When appropriate, set assessment to "complete" to end the conversation.
           `
         }
       );
@@ -93,7 +105,6 @@ export async function POST(req: Request) {
 
           if (lastMessage.content[0].type === 'text') {
             try {
-              // Validate the response format
               const responseText = lastMessage.content[0].text.value;
               const parsedResponse = JSON.parse(responseText);
               
@@ -132,6 +143,7 @@ export async function POST(req: Request) {
         }
 
         if (runStatus.status === 'failed') {
+          console.error('Run failed:', runStatus.last_error);
           return NextResponse.json({
             threadId: thread.id,
             message: JSON.stringify(DEFAULT_RESPONSE)
