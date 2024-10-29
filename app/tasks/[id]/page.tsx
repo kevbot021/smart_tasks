@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { createClient } from '@supabase/supabase-js'
 import type { Task, Subtask } from '@/types'
+import TaskDetailSkeleton from './loading'
+import { motion } from 'framer-motion'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,10 +23,12 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const [task, setTask] = useState<TaskWithAssigner | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isImageLoading, setIsImageLoading] = useState(true)
 
   useEffect(() => {
     const fetchTask = async () => {
       try {
+        console.log('Fetching task details:', params.id)
         const { data: taskData, error: taskError } = await supabase
           .from('tasks')
           .select(`
@@ -36,6 +40,7 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
           .single()
 
         if (taskError) throw taskError
+        console.log('Task data received:', taskData)
         setTask(taskData)
       } catch (error) {
         console.error('Error fetching task:', error)
@@ -48,15 +53,31 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
   }, [params.id])
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return <TaskDetailSkeleton />
   }
 
   if (!task) {
-    return <div>Task not found</div>
+    return (
+      <div className="container mx-auto p-6 max-w-2xl text-center">
+        <h1 className="text-2xl font-bold text-gray-800">Task not found</h1>
+        <Button 
+          onClick={() => router.back()}
+          variant="ghost"
+          className="mt-4"
+        >
+          ← Go Back
+        </Button>
+      </div>
+    )
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="container mx-auto p-6 max-w-2xl"
+    >
       <Button 
         onClick={() => router.back()}
         variant="ghost"
@@ -66,32 +87,56 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
       </Button>
 
       <div className="space-y-8">
-        <div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+        >
           <h1 className="text-2xl font-bold mb-2">{task.description}</h1>
           <p className="text-gray-500">
             Assigned by: {task.assigner?.name || 'Unknown'}
           </p>
-        </div>
+        </motion.div>
 
         {task.cartoon_slides && (
-          <div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: isImageLoading ? 0 : 1 }}
+            transition={{ duration: 0.3 }}
+          >
             <h2 className="text-xl font-semibold mb-4">Task Visualization</h2>
-            <img 
-              src={task.cartoon_slides} 
-              alt="Task visualization"
-              className="w-full rounded-lg shadow-lg"
-            />
-          </div>
+            <div className="relative">
+              {isImageLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                </div>
+              )}
+              <img 
+                src={task.cartoon_slides} 
+                alt="Task visualization"
+                className="w-full rounded-lg shadow-lg"
+                onLoad={() => setIsImageLoading(false)}
+                style={{ opacity: isImageLoading ? 0 : 1 }}
+              />
+            </div>
+          </motion.div>
         )}
 
         {task.sub_tasks && task.sub_tasks.length > 0 && (
-          <div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+          >
             <h2 className="text-xl font-semibold mb-4">Subtasks</h2>
             <div className="space-y-3">
-              {task.sub_tasks.map((subtask) => (
-                <div 
+              {task.sub_tasks.map((subtask, index) => (
+                <motion.div 
                   key={subtask.id}
-                  className="flex items-center space-x-3 p-4 bg-white rounded-lg shadow"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5 + index * 0.1 }}
+                  className="flex items-center space-x-3 p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
                 >
                   <input
                     type="checkbox"
@@ -103,7 +148,6 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                           .update({ is_complete: !subtask.is_complete })
                           .eq('id', subtask.id)
 
-                        // Update local state
                         setTask(prev => {
                           if (!prev) return prev
                           return {
@@ -119,17 +163,17 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                         console.error('Error updating subtask:', error)
                       }
                     }}
-                    className="h-4 w-4"
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                   />
-                  <span className={subtask.is_complete ? 'line-through text-gray-400' : ''}>
+                  <span className={`flex-grow ${subtask.is_complete ? 'line-through text-gray-400' : ''}`}>
                     {subtask.description}
                   </span>
-                </div>
+                </motion.div>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
-    </div>
+    </motion.div>
   )
 } 
