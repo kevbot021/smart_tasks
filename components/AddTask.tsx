@@ -31,9 +31,13 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!description.trim()) return
+    if (!teamId) {
+      console.error('Team ID is not set');
+      return;
+    }
 
     try {
-      // Create the task first without specifying an ID (let Supabase generate it)
+      // Create the task first
       const { data: taskData, error: taskError } = await supabase
         .from('tasks')
         .insert({
@@ -57,9 +61,10 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
         return;
       }
 
-      // Then generate subtasks using the returned task ID
+      // Get the session for authentication
       const { data: { session } } = await supabase.auth.getSession()
       
+      // Generate subtasks, category, and audio
       const response = await fetch('/api/generate-task-details', {
         method: 'POST',
         headers: {
@@ -75,19 +80,29 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('Failed to generate subtasks:', errorData);
+        console.error('Failed to generate task details:', errorData);
+        onAddTask(taskData);
       } else {
         const data = await response.json();
-        console.log('Successfully generated subtasks:', data);
+        console.log('Generated task details:', data);
+        
+        // Create an updated task object with all the new data
+        const updatedTaskData = {
+          ...taskData,
+          category: data.category,
+          sub_tasks: data.subtasks,
+          audio_summary: data.audio_summary
+        };
+
+        // Add the updated task to the UI
+        onAddTask(updatedTaskData);
       }
 
-      // Add the task to the UI
-      onAddTask(taskData);
+      setDescription('');
+
     } catch (error) {
       console.error('Error in handleSubmit:', error);
     }
-
-    setDescription('')
   }
 
   return (
