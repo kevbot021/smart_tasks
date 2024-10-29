@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { createClient } from '@supabase/supabase-js'
 import type { Task, TaskContext } from '@/types'
-import AIChatDrawer from '@/components/AIChatDrawer'
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import AIChatDrawer from '@/components/AIChatDrawer';
 import { motion } from 'framer-motion'
 
 const supabase = createClient(
@@ -177,14 +178,14 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
         )}
       </div>
 
-      {task && taskContext && (
-        <AIChatDrawer
-          isOpen={isAIChatOpen}
-          onClose={() => setIsAIChatOpen(false)}
-          task={task}
-          taskContext={taskContext}
-        />
-      )}
+      <ErrorBoundary>
+        {isAIChatOpen && taskContext && (
+          <AIChatDrawer
+            onClose={() => setIsAIChatOpen(false)}
+            taskContext={taskContext}
+          />
+        )}
+      </ErrorBoundary>
     </motion.div>
   )
 } 
