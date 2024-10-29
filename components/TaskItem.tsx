@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp, Trash2, Play, Pause, Loader2 } from 'lucide-react'
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { ChevronDown, ChevronUp, Trash2, Play, Pause, Loader2, Image } from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -11,9 +12,8 @@ import {
 } from "@/components/ui/select"
 import { getColorForCategory } from '@/lib/utils'
 import { createClient } from '@supabase/supabase-js'
-import type { Task, Subtask } from '@/types' // Import shared types
+import type { Task, Subtask } from '@/types'
 
-// Initialize Supabase client
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 interface TeamMember {
@@ -46,6 +46,7 @@ export default function TaskItem({
   const [isPlaying, setIsPlaying] = useState(false)
   const [isAudioLoading, setIsAudioLoading] = useState(true)
   const [audioLoaded, setAudioLoaded] = useState(false)
+  const [imageDialogOpen, setImageDialogOpen] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
@@ -53,11 +54,9 @@ export default function TaskItem({
       setIsAudioLoading(true)
       setAudioLoaded(false)
 
-      // Create new audio element
       const audio = new Audio()
       audio.src = `data:audio/mp3;base64,${task.audio_summary}`
 
-      // Add event listeners
       audio.addEventListener('canplaythrough', () => {
         setIsAudioLoading(false)
         setAudioLoaded(true)
@@ -73,10 +72,8 @@ export default function TaskItem({
         setIsPlaying(false)
       })
 
-      // Store audio element in ref
       audioRef.current = audio
 
-      // Cleanup
       return () => {
         audio.pause()
         audio.src = ''
@@ -145,6 +142,22 @@ export default function TaskItem({
                 <Play className="h-4 w-4" />
               )}
             </Button>
+          )}
+          {task.cartoon_slides && (
+            <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <Image className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl">
+                <img 
+                  src={task.cartoon_slides} 
+                  alt="Task visualization" 
+                  className="w-full h-auto rounded-lg"
+                />
+              </DialogContent>
+            </Dialog>
           )}
           <Badge 
             variant="outline" 

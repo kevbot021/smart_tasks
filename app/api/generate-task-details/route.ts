@@ -71,6 +71,46 @@ export async function POST(req: Request) {
 
     console.log('Processed data:', { category, subtasks });
 
+    // Generate the cartoon image
+    const imagePrompt = `Create a simple, cartoon-style image showing three panels: 1. ${subtasks[0]}, 2. ${subtasks[1]}, 3. ${subtasks[2]}. Make it colorful and easy to understand.`;
+    
+    const imageResponse = await openai.images.generate({
+      model: "dall-e-3",
+      prompt: imagePrompt,
+      n: 1,
+      size: "1024x1024",
+      quality: "standard",
+      style: "natural"
+    });
+
+    const imageUrl = imageResponse.data[0]?.url;
+    if (!imageUrl) {
+      throw new Error('No image URL received from OpenAI');
+    }
+
+    // Download the image and upload to Supabase storage
+    const imageRes = await fetch(imageUrl);
+    const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+    
+    const fileName = `task-${taskId}-${Date.now()}.png`;
+    const { data: uploadData, error: uploadError } = await supabase
+      .storage
+      .from('task-images')  // Make sure this bucket exists in Supabase
+      .upload(fileName, imageBuffer, {
+        contentType: 'image/png',
+        cacheControl: '3600'
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    // Get the public URL for the uploaded image
+    const { data: { publicUrl } } = supabase
+      .storage
+      .from('task-images')
+      .getPublicUrl(fileName);
+
     // Generate audio summary
     const audioSummaryText = `Task: ${taskDescription}. This is a ${category} task. It has ${subtasks.length} subtasks: ${subtasks.join('. ')}`;
     
@@ -85,12 +125,13 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(await mp3Response.arrayBuffer());
     const base64Audio = buffer.toString('base64');
 
-    // Update task with the category and audio summary
+    // Update task with the category, audio summary, and cartoon slides
     const { error: updateError } = await supabase
       .from('tasks')
       .update({ 
         category,
-        audio_summary: base64Audio
+        audio_summary: base64Audio,
+        cartoon_slides: publicUrl
       })
       .eq('id', taskId);
 
@@ -125,7 +166,8 @@ export async function POST(req: Request) {
       success: true, 
       category,
       subtasks: insertedSubtasks,
-      audio_summary: base64Audio
+      audio_summary: base64Audio,
+      cartoon_slides: publicUrl
     });
 
   } catch (error) {

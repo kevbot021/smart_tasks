@@ -91,7 +91,8 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
           ...taskData,
           category: data.category,
           sub_tasks: data.subtasks,
-          audio_summary: data.audio_summary
+          audio_summary: data.audio_summary,
+          cartoon_slides: data.cartoon_slides
         };
 
         // Add the updated task to the UI
