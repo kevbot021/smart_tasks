@@ -39,43 +39,78 @@ export default function ToDoPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['All'])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const router = useRouter()
+  const [isLoading, setIsLoading] = useState(true)
 
   const fetchUserAndTeamInfo = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      setUserId(user.id)
+    console.group('👤 Fetching User & Team Info');
+    console.time('User info fetch duration');
+    
+    try {
+      console.log('🔍 Getting user session...');
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        console.warn('❌ No user found, redirecting to login');
+        router.push('/login');
+        return;
+      }
+
+      console.log('✅ User found:', { userId: user.id });
+      setUserId(user.id);
+
+      console.log('🔍 Fetching user details...');
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('name, team_id, role')
         .eq('id', user.id)
-        .single()
+        .single();
 
-      if (userError) throw userError
+      if (userError) {
+        console.error('❌ Error fetching user data:', userError);
+        throw userError;
+      }
 
-      setUserName(userData.name)
-      setTeamId(userData.team_id)
-      setIsAdmin(userData.role === 'admin')
+      console.log('✅ User details:', userData);
+      setUserName(userData.name);
+      setTeamId(userData.team_id);
+      setIsAdmin(userData.role === 'admin');
 
+      console.log('🔍 Fetching team details...');
       const { data: teamData, error: teamError } = await supabase
         .from('teams')
         .select('name')
         .eq('id', userData.team_id)
-        .single()
+        .single();
 
-      if (teamError) throw teamError
+      if (teamError) {
+        console.error('❌ Error fetching team data:', teamError);
+        throw teamError;
+      }
 
-      setTeamName(teamData.name)
+      console.log('✅ Team details:', teamData);
+      setTeamName(teamData.name);
 
-      fetchTasks(user.id, userData.role === 'admin')
+    } catch (error) {
+      console.error('❌ Error in fetchUserAndTeamInfo:', error);
+    } finally {
+      console.timeEnd('User info fetch duration');
+      console.groupEnd();
     }
   }
 
-  const fetchTasks = async (userId: string, isAdmin: boolean) => {
+  const fetchTasks = async (userId: string, isAdmin: boolean, teamId: string) => {
+    const startTime = performance.now();
+    console.group('📡 Fetching Tasks');
+    console.log('Request params:', { userId, isAdmin, teamId });
+    
     try {
-      if (!teamId) {
-        console.log('Team ID is not set yet')
-        return
+      if (!teamId || !userId) {
+        console.warn('❌ Missing required IDs', { teamId, userId });
+        return;
       }
+
+      setIsLoading(true);
+      console.time('Task fetch duration');
 
       let query = supabase
         .from('tasks')
@@ -83,38 +118,64 @@ export default function ToDoPage() {
           *,
           sub_tasks (*)
         `)
-        .eq('team_id', teamId)
+        .eq('team_id', teamId);
 
       if (!isAdmin) {
-        query = query.eq('assigned_user_id', userId)
+        query = query.eq('assigned_user_id', userId);
       }
 
-      const { data: taskData, error: taskError } = await query.order('created_at', { ascending: false })
+      console.log('🔍 Executing Supabase query...');
+      const { data: taskData, error: taskError } = await query.order('created_at', { ascending: false });
 
       if (taskError) {
-        console.error('Error fetching tasks:', taskError)
-        return
+        console.error('❌ Error fetching tasks:', taskError);
+        return;
       }
 
-      setTasks(taskData || [])
-      setFilteredTasks(taskData || [])
+      const endTime = performance.now();
+      console.log(`✅ Tasks fetched successfully in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`📊 Fetched ${taskData?.length || 0} tasks`);
+      console.log('First task sample:', taskData?.[0]);
+
+      setTasks(taskData || []);
+      setFilteredTasks(taskData || []);
     } catch (error) {
-      console.error('Error in fetchTasks:', error)
+      console.error('❌ Error in fetchTasks:', error);
+    } finally {
+      setIsLoading(false);
+      console.timeEnd('Task fetch duration');
+      console.groupEnd();
     }
   }
 
   const fetchTeamMembers = async () => {
+    console.group('👥 Fetching Team Members');
+    console.time('Team members fetch duration');
+    
     try {
+      if (!teamId) {
+        console.warn('❌ No teamId available');
+        return;
+      }
+
+      console.log('🔍 Fetching team members for team:', teamId);
       const { data, error } = await supabase
         .from('users')
         .select('id, name')
-        .eq('team_id', teamId)
+        .eq('team_id', teamId);
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Error fetching team members:', error);
+        throw error;
+      }
 
-      setTeamMembers(data || [])
+      console.log(`✅ Fetched ${data?.length || 0} team members`);
+      setTeamMembers(data || []);
     } catch (error) {
-      console.error('Error fetching team members:', error)
+      console.error('❌ Error in fetchTeamMembers:', error);
+    } finally {
+      console.timeEnd('Team members fetch duration');
+      console.groupEnd();
     }
   }
 
@@ -134,13 +195,16 @@ export default function ToDoPage() {
   }, [])
 
   useEffect(() => {
-    if (userId && isAdmin !== undefined) {
-      fetchTasks(userId, isAdmin)
+    if (userId && teamId && isAdmin !== undefined) {
+      console.log('Triggering task fetch with:', { userId, teamId, isAdmin })
+      fetchTasks(userId, isAdmin, teamId)
     }
-  }, [userId, isAdmin, teamId])
+  }, [userId, teamId, isAdmin])
 
   useEffect(() => {
-    filterTasks()
+    if (tasks.length > 0) {
+      filterTasks()
+    }
   }, [tasks, selectedCategories])
 
   useEffect(() => {
@@ -188,7 +252,7 @@ export default function ToDoPage() {
 
     if (error) throw error
 
-    await fetchTasks(userId, isAdmin)
+    await fetchTasks(userId, isAdmin, teamId)
   }
 
   const handleToggleSubtaskComplete = async (subtaskId: string, isComplete: boolean) => {
@@ -199,7 +263,7 @@ export default function ToDoPage() {
 
     if (error) throw error
 
-    await fetchTasks(userId, isAdmin)
+    await fetchTasks(userId, isAdmin, teamId)
   }
 
   const handleAssignTask = async (taskId: string, assignedUserId: string) => {
@@ -282,7 +346,7 @@ export default function ToDoPage() {
 
       if (insertError) throw insertError
 
-      await fetchTasks(userId, isAdmin)
+      await fetchTasks(userId, isAdmin, teamId)
     } catch (error) {
       console.error('Error updating task:', error)
     }
@@ -322,7 +386,7 @@ export default function ToDoPage() {
 
       console.log(`Task ${taskId} removed from local state`);
 
-      await fetchTasks(userId, isAdmin);
+      await fetchTasks(userId, isAdmin, teamId);
 
     } catch (error) {
       console.error('Error in handleDeleteTask:', error);
@@ -384,26 +448,34 @@ export default function ToDoPage() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <AddTask 
-          onAddTask={handleAddTask}
-          userId={userId}
-          teamId={teamId}
-        />
-        <div className="space-y-6 mt-8">
-          {filteredTasks.map((task) => (
-            <TaskItem
-              key={task.id}
-              task={task}
-              teamMembers={teamMembers}
-              isAdmin={isAdmin}
-              onToggleComplete={handleToggleComplete}
-              onToggleSubtaskComplete={handleToggleSubtaskComplete}
-              onAssignTask={handleAssignTask}
-              onUpdateTask={handleUpdateTask}
-              onDeleteTask={handleDeleteTask}
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          </div>
+        ) : (
+          <>
+            <AddTask 
+              onAddTask={handleAddTask}
+              userId={userId}
+              teamId={teamId}
             />
-          ))}
-        </div>
+            <div className="space-y-6 mt-8">
+              {filteredTasks.map((task) => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  teamMembers={teamMembers}
+                  isAdmin={isAdmin}
+                  onToggleComplete={handleToggleComplete}
+                  onToggleSubtaskComplete={handleToggleSubtaskComplete}
+                  onAssignTask={handleAssignTask}
+                  onUpdateTask={handleUpdateTask}
+                  onDeleteTask={handleDeleteTask}
+                />
+              ))}
+            </div>
+          </>
+        )}
         {showInviteModal && (
           <InviteTeamMember
             teamId={teamId}
