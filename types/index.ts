@@ -1,33 +1,32 @@
 export interface User {
-  id: string
-  name: string
-  email: string
+  id: string;
+  name: string;
+  email: string;
 }
 
-export interface Subtask {
-  id: string
-  description: string
-  is_complete: boolean
-  task_id: string
-  created_at?: string
-  updated_at?: string
+export interface TeamMember {
+  id: string;
+  name: string;
 }
 
 export interface Task {
-  id: string
-  description: string
-  is_complete: boolean
-  category?: string
-  assigned_user_id?: string | null
-  created_by_user_id: string
-  team_id: string
-  audio_summary?: string
-  cartoon_slides?: string
-  created_at?: string
-  updated_at?: string
-  sub_tasks?: Subtask[]
-  assigner?: User
-  assigned_user?: User
+  id: string;
+  description: string;
+  is_complete: boolean;
+  category?: string;
+  assigned_user_id?: string | null;
+  team_id: string;
+  created_at: string;
+  audio_summary?: string;
+  image?: string;
+  sub_tasks?: Subtask[];
+}
+
+export interface Subtask {
+  id: string;
+  description: string;
+  is_complete: boolean;
+  task_id: string;
 }
 
 export interface TaskContext {

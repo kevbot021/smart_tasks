@@ -8,7 +8,7 @@ import AddTask from '../../components/AddTask'
 import InviteTeamMember from '../../components/InviteTeamMember'
 import { Button } from "@/components/ui/button"
 import { Settings } from 'lucide-react'
-import type { Task, User } from '@/types'
+import type { Task, TeamMember } from '@/types'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,7 +38,7 @@ export default function ToDoPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [userId, setUserId] = useState('')
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['All'])
-  const [teamMembers, setTeamMembers] = useState<User[]>([])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
 
@@ -171,7 +171,7 @@ export default function ToDoPage() {
       }
 
       console.log(`✅ Fetched ${data?.length || 0} team members`);
-      setTeamMembers(data || []);
+      setTeamMembers(data as TeamMember[] || []);
     } catch (error) {
       console.error('❌ Error in fetchTeamMembers:', error);
     } finally {
@@ -185,7 +185,7 @@ export default function ToDoPage() {
       setFilteredTasks(tasks)
     } else {
       setFilteredTasks(tasks.filter(task => 
-        selectedCategories.includes(task.category) || 
+        (task.category && selectedCategories.includes(task.category)) || 
         (selectedCategories.includes('Completed') && task.is_complete)
       ))
     }
