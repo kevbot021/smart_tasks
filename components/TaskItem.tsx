@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
-import { ChevronDown, ChevronUp, Trash2, Play, Pause, Loader2, Image } from 'lucide-react'
+import { ChevronDown, ChevronUp, Trash2, Play, Pause, Image } from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -47,7 +47,6 @@ export default function TaskItem({
   const [isAudioLoading, setIsAudioLoading] = useState(true)
   const [audioLoaded, setAudioLoaded] = useState(false)
   const [imageDialogOpen, setImageDialogOpen] = useState(false)
-  const [isImageLoading, setIsImageLoading] = useState(true)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
@@ -85,12 +84,6 @@ export default function TaskItem({
       }
     }
   }, [task.audio_summary])
-
-  useEffect(() => {
-    if (task.cartoon_slides) {
-      setIsImageLoading(false)
-    }
-  }, [task.cartoon_slides])
 
   const handlePlayAudio = () => {
     if (!audioRef.current || !audioLoaded) return
@@ -138,11 +131,9 @@ export default function TaskItem({
             size="sm" 
             onClick={handlePlayAudio}
             disabled={isAudioLoading || !audioLoaded}
-            className={isAudioLoading ? 'opacity-50 cursor-not-allowed' : ''}
+            className={`transition-opacity ${isAudioLoading || !audioLoaded ? 'opacity-40' : 'opacity-100'}`}
           >
-            {isAudioLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : isPlaying ? (
+            {isPlaying ? (
               <Pause className="h-4 w-4" />
             ) : (
               <Play className="h-4 w-4" />
@@ -153,14 +144,10 @@ export default function TaskItem({
               <Button 
                 variant="ghost" 
                 size="sm"
-                disabled={isImageLoading}
-                className={isImageLoading ? 'opacity-50 cursor-not-allowed' : ''}
+                disabled={!task.cartoon_slides}
+                className={`transition-opacity ${!task.cartoon_slides ? 'opacity-40' : 'opacity-100'}`}
               >
-                {isImageLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Image className="h-4 w-4" />
-                )}
+                <Image className="h-4 w-4" />
               </Button>
             </DialogTrigger>
             {task.cartoon_slides && (
@@ -175,7 +162,9 @@ export default function TaskItem({
           </Dialog>
           <Badge 
             variant="outline" 
-            className={`${categoryColor.bg} ${categoryColor.text} ${categoryColor.border}`}
+            className={`${categoryColor.bg} ${categoryColor.text} ${categoryColor.border} ${
+              task.category === 'Processing...' ? 'opacity-40' : 'opacity-100'
+            }`}
           >
             {task.category}
           </Badge>
