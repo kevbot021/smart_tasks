@@ -31,9 +31,13 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!description.trim()) return
+    if (!teamId) {
+      console.error('Team ID is not set');
+      return;
+    }
 
     try {
-      // Create the task first without specifying an ID (let Supabase generate it)
+      // Create the task first
       const { data: taskData, error: taskError } = await supabase
         .from('tasks')
         .insert({
@@ -57,9 +61,10 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
         return;
       }
 
-      // Then generate subtasks using the returned task ID
+      // Get the session for authentication
       const { data: { session } } = await supabase.auth.getSession()
       
+      // Generate subtasks and update category
       const response = await fetch('/api/generate-task-details', {
         method: 'POST',
         headers: {
@@ -73,21 +78,37 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
         })
       });
 
+      let updatedTaskData = { ...taskData };
+
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Failed to generate subtasks:', errorData);
       } else {
         const data = await response.json();
-        console.log('Successfully generated subtasks:', data);
+        console.log('Generated task details:', data);
+        
+        // Fetch the updated task with its subtasks
+        const { data: refreshedTask, error: refreshError } = await supabase
+          .from('tasks')
+          .select(`
+            *,
+            sub_tasks (*)
+          `)
+          .eq('id', taskData.id)
+          .single();
+
+        if (!refreshError && refreshedTask) {
+          updatedTaskData = refreshedTask;
+        }
       }
 
       // Add the task to the UI
-      onAddTask(taskData);
+      onAddTask(updatedTaskData);
+      setDescription('');
+
     } catch (error) {
       console.error('Error in handleSubmit:', error);
     }
-
-    setDescription('')
   }
 
   return (
