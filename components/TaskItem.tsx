@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp, Trash2, Play, Pause, Loader2 } from 'lucide-react'
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { ChevronDown, ChevronUp, Trash2, Play, Pause, Image } from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -11,9 +12,8 @@ import {
 } from "@/components/ui/select"
 import { getColorForCategory } from '@/lib/utils'
 import { createClient } from '@supabase/supabase-js'
-import type { Task, Subtask } from '@/types' // Import shared types
+import type { Task, Subtask } from '@/types'
 
-// Initialize Supabase client
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 interface TeamMember {
@@ -46,6 +46,7 @@ export default function TaskItem({
   const [isPlaying, setIsPlaying] = useState(false)
   const [isAudioLoading, setIsAudioLoading] = useState(true)
   const [audioLoaded, setAudioLoaded] = useState(false)
+  const [imageDialogOpen, setImageDialogOpen] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
@@ -53,11 +54,9 @@ export default function TaskItem({
       setIsAudioLoading(true)
       setAudioLoaded(false)
 
-      // Create new audio element
       const audio = new Audio()
       audio.src = `data:audio/mp3;base64,${task.audio_summary}`
 
-      // Add event listeners
       audio.addEventListener('canplaythrough', () => {
         setIsAudioLoading(false)
         setAudioLoaded(true)
@@ -73,10 +72,8 @@ export default function TaskItem({
         setIsPlaying(false)
       })
 
-      // Store audio element in ref
       audioRef.current = audio
 
-      // Cleanup
       return () => {
         audio.pause()
         audio.src = ''
@@ -129,26 +126,45 @@ export default function TaskItem({
           {task.description}
         </span>
         <div className="flex items-center space-x-2">
-          {task.audio_summary && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={handlePlayAudio}
-              disabled={isAudioLoading || !audioLoaded}
-              className={isAudioLoading ? 'opacity-50 cursor-not-allowed' : ''}
-            >
-              {isAudioLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : isPlaying ? (
-                <Pause className="h-4 w-4" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-            </Button>
-          )}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handlePlayAudio}
+            disabled={isAudioLoading || !audioLoaded}
+            className={`transition-opacity ${isAudioLoading || !audioLoaded ? 'opacity-40' : 'opacity-100'}`}
+          >
+            {isPlaying ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+          </Button>
+          <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
+            <DialogTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                disabled={!task.cartoon_slides}
+                className={`transition-opacity ${!task.cartoon_slides ? 'opacity-40' : 'opacity-100'}`}
+              >
+                <Image className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            {task.cartoon_slides && (
+              <DialogContent className="max-w-4xl">
+                <img 
+                  src={task.cartoon_slides} 
+                  alt="Task visualization" 
+                  className="w-full h-auto rounded-lg"
+                />
+              </DialogContent>
+            )}
+          </Dialog>
           <Badge 
             variant="outline" 
-            className={`${categoryColor.bg} ${categoryColor.text} ${categoryColor.border}`}
+            className={`${categoryColor.bg} ${categoryColor.text} ${categoryColor.border} ${
+              task.category === 'Processing...' ? 'opacity-40' : 'opacity-100'
+            }`}
           >
             {task.category}
           </Badge>

@@ -13,6 +13,7 @@ export interface Task {
   assigned_user_id: string | null
   created_by_user_id: string
   team_id: string
-  sub_tasks?: Subtask[]
   audio_summary?: string
+  cartoon_slides?: string
+  sub_tasks?: Subtask[]
 } 

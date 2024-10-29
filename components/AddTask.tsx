@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { Plus } from 'lucide-react'
+import { Plus, Loader2 } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
+import type { Task } from '@/types'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,35 +16,24 @@ interface AddTaskProps {
   teamId: string
 }
 
-interface Task {
-  id: string
-  description: string
-  is_complete: boolean
-  category: string
-  assigned_user_id: string | null
-  created_by_user_id: string
-  team_id: string
-}
-
 export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
   const [description, setDescription] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!description.trim()) return
-    if (!teamId) {
-      console.error('Team ID is not set');
-      return;
-    }
+    if (!description.trim() || !teamId || isSubmitting) return
+    
+    setIsSubmitting(true)
 
     try {
-      // Create the task first
+      // 1. Create the initial task
       const { data: taskData, error: taskError } = await supabase
         .from('tasks')
         .insert({
           description,
           is_complete: false,
-          category: 'Uncategorized',
+          category: 'Processing...',
           assigned_user_id: null,
           created_by_user_id: userId,
           team_id: teamId,
@@ -51,20 +41,23 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
         .select()
         .single();
 
-      if (taskError) {
-        console.error('Error creating task:', taskError);
-        return;
-      }
+      if (taskError) throw taskError;
+      if (!taskData) throw new Error('No task data returned');
 
-      if (!taskData) {
-        console.error('No task data returned');
-        return;
-      }
+      // Initialize task with all fields to prevent UI changes
+      let currentTask = {
+        ...taskData,
+        sub_tasks: [],
+        audio_summary: undefined,
+        cartoon_slides: undefined,
+      };
+      
+      // Add task to UI once
+      onAddTask(currentTask);
 
-      // Get the session for authentication
+      // 2. Generate text content (category and subtasks)
       const { data: { session } } = await supabase.auth.getSession()
       
-      // Generate subtasks, category, and audio
       const response = await fetch('/api/generate-task-details', {
         method: 'POST',
         headers: {
@@ -74,34 +67,60 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
         body: JSON.stringify({
           taskDescription: description,
           taskId: taskData.id,
-          teamId: teamId
+          teamId: teamId,
+          stage: 'text'
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to generate task details:', errorData);
-        onAddTask(taskData);
-      } else {
-        const data = await response.json();
-        console.log('Generated task details:', data);
-        
-        // Create an updated task object with all the new data
-        const updatedTaskData = {
-          ...taskData,
-          category: data.category,
-          sub_tasks: data.subtasks,
-          audio_summary: data.audio_summary
-        };
+      if (!response.ok) throw new Error('Failed to generate task details');
+      
+      const data = await response.json();
+      
+      // Update our task object
+      currentTask = {
+        ...currentTask,
+        category: data.category,
+        sub_tasks: data.subtasks,
+      };
+      
+      // Update UI with new data
+      onAddTask(currentTask);
 
-        // Add the updated task to the UI
-        onAddTask(updatedTaskData);
+      // 3. Generate media content in the background
+      const mediaResponse = await fetch('/api/generate-task-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({
+          taskDescription: description,
+          taskId: taskData.id,
+          teamId: teamId,
+          stage: 'media',
+          subtasks: data.subtasks,
+          category: data.category
+        })
+      });
+
+      if (mediaResponse.ok) {
+        const mediaData = await mediaResponse.json();
+        
+        // Final update with all content
+        currentTask = {
+          ...currentTask,
+          audio_summary: mediaData.audio_summary,
+          cartoon_slides: mediaData.cartoon_slides,
+        };
+        
+        onAddTask(currentTask);
       }
 
       setDescription('');
-
     } catch (error) {
       console.error('Error in handleSubmit:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -112,13 +131,19 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
         onChange={(e) => setDescription(e.target.value)}
         placeholder="Add a new task..."
         className="min-h-[100px] bg-white pr-12"
+        disabled={isSubmitting}
       />
       <Button 
         type="submit" 
         size="icon"
         className="absolute bottom-4 right-4 rounded-full"
+        disabled={isSubmitting}
       >
-        <Plus className="h-4 w-4" />
+        {isSubmitting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Plus className="h-4 w-4" />
+        )}
       </Button>
     </form>
   )
