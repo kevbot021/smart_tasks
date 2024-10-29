@@ -71,14 +71,31 @@ export async function POST(req: Request) {
 
     console.log('Processed data:', { category, subtasks });
 
-    // Update task with the category
+    // Generate audio summary
+    const audioSummaryText = `Task: ${taskDescription}. This is a ${category} task. It has ${subtasks.length} subtasks: ${subtasks.join('. ')}`;
+    
+    // Generate audio using OpenAI TTS
+    const mp3Response = await openai.audio.speech.create({
+      model: "tts-1",
+      voice: "alloy",
+      input: audioSummaryText,
+    });
+
+    // Convert the audio to base64
+    const buffer = Buffer.from(await mp3Response.arrayBuffer());
+    const base64Audio = buffer.toString('base64');
+
+    // Update task with the category and audio summary
     const { error: updateError } = await supabase
       .from('tasks')
-      .update({ category })
+      .update({ 
+        category,
+        audio_summary: base64Audio
+      })
       .eq('id', taskId);
 
     if (updateError) {
-      console.error('Error updating task category:', updateError);
+      console.error('Error updating task:', updateError);
       throw updateError;
     }
 
@@ -107,7 +124,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ 
       success: true, 
       category,
-      subtasks: insertedSubtasks
+      subtasks: insertedSubtasks,
+      audio_summary: base64Audio
     });
 
   } catch (error) {

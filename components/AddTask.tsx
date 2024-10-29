@@ -64,7 +64,7 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
       // Get the session for authentication
       const { data: { session } } = await supabase.auth.getSession()
       
-      // Generate subtasks and update category
+      // Generate subtasks, category, and audio
       const response = await fetch('/api/generate-task-details', {
         method: 'POST',
         headers: {
@@ -80,18 +80,18 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('Failed to generate subtasks:', errorData);
-        // Still add the task to UI even if subtask generation fails
+        console.error('Failed to generate task details:', errorData);
         onAddTask(taskData);
       } else {
         const data = await response.json();
         console.log('Generated task details:', data);
         
-        // Create an updated task object with the new category and subtasks
+        // Create an updated task object with all the new data
         const updatedTaskData = {
           ...taskData,
-          category: data.category, // Update the category from the API response
-          sub_tasks: data.subtasks // Add the generated subtasks
+          category: data.category,
+          sub_tasks: data.subtasks,
+          audio_summary: data.audio_summary
         };
 
         // Add the updated task to the UI
