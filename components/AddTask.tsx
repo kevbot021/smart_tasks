@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Plus } from 'lucide-react'
-import { v4 as uuidv4 } from 'uuid'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -24,13 +23,6 @@ interface Task {
   assigned_user_id: string | null
   created_by_user_id: string
   team_id: string
-}
-
-interface Subtask {
-  id: string
-  task_id: string
-  description: string
-  is_complete: boolean
 }
 
 export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {

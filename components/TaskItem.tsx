@@ -11,28 +11,10 @@ import {
 } from "@/components/ui/select"
 import { getColorForCategory } from '@/lib/utils'
 import { createClient } from '@supabase/supabase-js'
+import type { Task, Subtask } from '@/types' // Import shared types
 
 // Initialize Supabase client
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
-interface Subtask {
-  id: string
-  task_id: string
-  description: string
-  is_complete: boolean
-}
-
-interface Task {
-  id: string
-  description: string
-  is_complete: boolean
-  category: string
-  assigned_user_id: string | null
-  created_by_user_id: string
-  team_id: string
-  sub_tasks?: Subtask[]
-  audio_summary?: string
-}
 
 interface TeamMember {
   id: string
