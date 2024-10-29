@@ -39,11 +39,18 @@ export default function ToDoPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['All'])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const router = useRouter()
+  const [isLoading, setIsLoading] = useState(true)
 
   const fetchUserAndTeamInfo = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
       setUserId(user.id)
+      
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('name, team_id, role')
@@ -65,17 +72,20 @@ export default function ToDoPage() {
       if (teamError) throw teamError
 
       setTeamName(teamData.name)
-
-      fetchTasks(user.id, userData.role === 'admin')
+    } catch (error) {
+      console.error('Error in fetchUserAndTeamInfo:', error)
     }
   }
 
-  const fetchTasks = async (userId: string, isAdmin: boolean) => {
+  const fetchTasks = async (userId: string, isAdmin: boolean, teamId: string) => {
     try {
-      if (!teamId) {
-        console.log('Team ID is not set yet')
+      setIsLoading(true)
+      if (!teamId || !userId) {
+        console.log('Required IDs not available yet')
         return
       }
+
+      console.log('Fetching tasks with:', { userId, isAdmin, teamId })
 
       let query = supabase
         .from('tasks')
@@ -96,10 +106,11 @@ export default function ToDoPage() {
         return
       }
 
+      console.log('Tasks fetched:', taskData?.length)
       setTasks(taskData || [])
       setFilteredTasks(taskData || [])
-    } catch (error) {
-      console.error('Error in fetchTasks:', error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -134,13 +145,16 @@ export default function ToDoPage() {
   }, [])
 
   useEffect(() => {
-    if (userId && isAdmin !== undefined) {
-      fetchTasks(userId, isAdmin)
+    if (userId && teamId && isAdmin !== undefined) {
+      console.log('Triggering task fetch with:', { userId, teamId, isAdmin })
+      fetchTasks(userId, isAdmin, teamId)
     }
-  }, [userId, isAdmin, teamId])
+  }, [userId, teamId, isAdmin])
 
   useEffect(() => {
-    filterTasks()
+    if (tasks.length > 0) {
+      filterTasks()
+    }
   }, [tasks, selectedCategories])
 
   useEffect(() => {
@@ -188,7 +202,7 @@ export default function ToDoPage() {
 
     if (error) throw error
 
-    await fetchTasks(userId, isAdmin)
+    await fetchTasks(userId, isAdmin, teamId)
   }
 
   const handleToggleSubtaskComplete = async (subtaskId: string, isComplete: boolean) => {
@@ -199,7 +213,7 @@ export default function ToDoPage() {
 
     if (error) throw error
 
-    await fetchTasks(userId, isAdmin)
+    await fetchTasks(userId, isAdmin, teamId)
   }
 
   const handleAssignTask = async (taskId: string, assignedUserId: string) => {
@@ -282,7 +296,7 @@ export default function ToDoPage() {
 
       if (insertError) throw insertError
 
-      await fetchTasks(userId, isAdmin)
+      await fetchTasks(userId, isAdmin, teamId)
     } catch (error) {
       console.error('Error updating task:', error)
     }
@@ -322,7 +336,7 @@ export default function ToDoPage() {
 
       console.log(`Task ${taskId} removed from local state`);
 
-      await fetchTasks(userId, isAdmin);
+      await fetchTasks(userId, isAdmin, teamId);
 
     } catch (error) {
       console.error('Error in handleDeleteTask:', error);
@@ -384,26 +398,34 @@ export default function ToDoPage() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <AddTask 
-          onAddTask={handleAddTask}
-          userId={userId}
-          teamId={teamId}
-        />
-        <div className="space-y-6 mt-8">
-          {filteredTasks.map((task) => (
-            <TaskItem
-              key={task.id}
-              task={task}
-              teamMembers={teamMembers}
-              isAdmin={isAdmin}
-              onToggleComplete={handleToggleComplete}
-              onToggleSubtaskComplete={handleToggleSubtaskComplete}
-              onAssignTask={handleAssignTask}
-              onUpdateTask={handleUpdateTask}
-              onDeleteTask={handleDeleteTask}
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          </div>
+        ) : (
+          <>
+            <AddTask 
+              onAddTask={handleAddTask}
+              userId={userId}
+              teamId={teamId}
             />
-          ))}
-        </div>
+            <div className="space-y-6 mt-8">
+              {filteredTasks.map((task) => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  teamMembers={teamMembers}
+                  isAdmin={isAdmin}
+                  onToggleComplete={handleToggleComplete}
+                  onToggleSubtaskComplete={handleToggleSubtaskComplete}
+                  onAssignTask={handleAssignTask}
+                  onUpdateTask={handleUpdateTask}
+                  onDeleteTask={handleDeleteTask}
+                />
+              ))}
+            </div>
+          </>
+        )}
         {showInviteModal && (
           <InviteTeamMember
             teamId={teamId}
