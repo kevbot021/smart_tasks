@@ -161,15 +161,24 @@ export default function ToDoPage() {
     })
   }
 
-  const handleAddTask = async (newTask: Task) => {
-    try {
-      setTasks(prevTasks => [newTask, ...prevTasks])
+  const handleAddTask = (newTask: Task) => {
+    setTasks(currentTasks => {
+      const taskIndex = currentTasks.findIndex(task => task.id === newTask.id);
       
-      await fetchTasks(userId, isAdmin)
-    } catch (error) {
-      console.error('Error adding task:', error)
-    }
-  }
+      if (taskIndex === -1) {
+        // Task doesn't exist, add it to the beginning
+        return [newTask, ...currentTasks];
+      } else {
+        // Task exists, update it
+        const updatedTasks = [...currentTasks];
+        updatedTasks[taskIndex] = {
+          ...updatedTasks[taskIndex],
+          ...newTask
+        };
+        return updatedTasks;
+      }
+    });
+  };
 
   const handleToggleComplete = async (taskId: string, isComplete: boolean) => {
     const { error } = await supabase
@@ -375,7 +384,11 @@ export default function ToDoPage() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        {isAdmin && <AddTask onAddTask={handleAddTask} userId={userId} teamId={teamId} />}
+        <AddTask 
+          onAddTask={handleAddTask}
+          userId={userId}
+          teamId={teamId}
+        />
         <div className="space-y-6 mt-8">
           {filteredTasks.map((task) => (
             <TaskItem

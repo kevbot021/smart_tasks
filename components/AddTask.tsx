@@ -3,6 +3,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Plus, Loader2 } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
+import type { Task } from '@/types'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,16 +14,6 @@ interface AddTaskProps {
   onAddTask: (task: Task) => void
   userId: string
   teamId: string
-}
-
-interface Task {
-  id: string
-  description: string
-  is_complete: boolean
-  category: string
-  assigned_user_id: string | null
-  created_by_user_id: string
-  team_id: string
 }
 
 export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
@@ -53,17 +44,18 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
       if (taskError) throw taskError;
       if (!taskData) throw new Error('No task data returned');
 
-      // Add the task to UI immediately with loading states
-      const initialTaskData = {
+      // Initialize task with all fields to prevent UI changes
+      let currentTask = {
         ...taskData,
         sub_tasks: [],
-        audio_summary: undefined, // Will be added later
-        cartoon_slides: undefined, // Will be added later
+        audio_summary: undefined,
+        cartoon_slides: undefined,
       };
       
-      onAddTask(initialTaskData);
+      // Add task to UI once
+      onAddTask(currentTask);
 
-      // 2. Generate text content (category and subtasks) first
+      // 2. Generate text content (category and subtasks)
       const { data: { session } } = await supabase.auth.getSession()
       
       const response = await fetch('/api/generate-task-details', {
@@ -76,7 +68,7 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
           taskDescription: description,
           taskId: taskData.id,
           teamId: teamId,
-          stage: 'text' // Only generate text content first
+          stage: 'text'
         })
       });
 
@@ -84,16 +76,17 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
       
       const data = await response.json();
       
-      // 3. Update UI with category and subtasks
-      const updatedTaskData = {
-        ...taskData,
+      // Update our task object
+      currentTask = {
+        ...currentTask,
         category: data.category,
         sub_tasks: data.subtasks,
       };
       
-      onAddTask(updatedTaskData);
+      // Update UI with new data
+      onAddTask(currentTask);
 
-      // 4. Generate media content in the background
+      // 3. Generate media content in the background
       const mediaResponse = await fetch('/api/generate-task-details', {
         method: 'POST',
         headers: {
@@ -105,22 +98,22 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
           taskId: taskData.id,
           teamId: teamId,
           stage: 'media',
-          subtasks: data.subtasks, // Pass the existing subtasks
-          category: data.category  // Pass the category
+          subtasks: data.subtasks,
+          category: data.category
         })
       });
 
       if (mediaResponse.ok) {
         const mediaData = await mediaResponse.json();
         
-        // 5. Final update with media content
-        const finalTaskData = {
-          ...updatedTaskData,
+        // Final update with all content
+        currentTask = {
+          ...currentTask,
           audio_summary: mediaData.audio_summary,
           cartoon_slides: mediaData.cartoon_slides,
         };
         
-        onAddTask(finalTaskData);
+        onAddTask(currentTask);
       }
 
       setDescription('');
