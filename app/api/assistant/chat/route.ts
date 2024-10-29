@@ -5,59 +5,108 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+const DEFAULT_RESPONSE = {
+  question: "How would you like to break down this task?",
+  options: [
+    "Let's understand the main goal first",
+    "Break it into smaller steps",
+    "What resources do I need?"
+  ],
+  assessment: "continuing",
+  confidence_score: 0
+};
+
 export async function POST(req: Request) {
   try {
+    console.log('Starting chat request...');
     const { threadId, taskContext, message } = await req.json();
+
+    if (!process.env.OPENAI_ASSISTANT_ID) {
+      console.error('Missing OPENAI_ASSISTANT_ID');
+      throw new Error('Assistant ID not configured');
+    }
 
     // Create a new thread if none exists
     let thread;
     if (!threadId) {
+      console.log('Creating new thread with context:', taskContext);
       thread = await openai.beta.threads.create();
       
-      // Add task context to the thread
+      // Include the word 'json' in the initial message
+      const contextMessage = `Please provide your response in JSON format. Here is the task context: ${JSON.stringify({
+        task: taskContext.description,
+        subtasks: taskContext.sub_tasks || [],
+        request: "Please help me understand this task better by asking relevant questions."
+      })}`;
+
       await openai.beta.threads.messages.create(thread.id, {
         role: "user",
-        content: `Task Context: ${JSON.stringify(taskContext)}`,
+        content: contextMessage
       });
     } else {
       thread = { id: threadId };
-    }
-
-    // Add the user's message if one exists
-    if (message) {
-      await openai.beta.threads.messages.create(thread.id, {
-        role: "user",
-        content: message,
-      });
-    }
-
-    // Run the assistant
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: process.env.OPENAI_ASSISTANT_ID!,
-    });
-
-    // Wait for the completion
-    let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-    
-    while (runStatus.status !== 'completed') {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-      
-      if (runStatus.status === 'failed') {
-        throw new Error('Assistant run failed');
+      if (message) {
+        // Include the word 'json' in follow-up messages
+        await openai.beta.threads.messages.create(thread.id, {
+          role: "user",
+          content: `Please provide your response in JSON format. User selected: ${message}`
+        });
       }
     }
 
-    // Get the latest message
-    const messages = await openai.beta.threads.messages.list(thread.id);
-    const lastMessage = messages.data[0];
+    console.log('Running assistant...');
+    const run = await openai.beta.threads.runs.create(thread.id, {
+      assistant_id: process.env.OPENAI_ASSISTANT_ID,
+      instructions: `You are a helpful task assistant. Analyze the task and respond with questions to help the user understand it better. Always respond in JSON format with the following structure:
+      {
+        "question": "your question here",
+        "options": ["option1", "option2", "option3"],
+        "assessment": "continuing",
+        "confidence_score": 0
+      }`
+    });
 
+    let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+    console.log('Initial run status:', runStatus.status);
+    
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (attempts < maxAttempts && runStatus.status !== 'completed') {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+      console.log(`Run status attempt ${attempts + 1}:`, runStatus.status);
+      attempts++;
+
+      if (runStatus.status === 'failed' || runStatus.status === 'cancelled' || runStatus.status === 'expired') {
+        throw new Error(`Run failed with status: ${runStatus.status}`);
+      }
+    }
+
+    if (runStatus.status === 'completed') {
+      const messages = await openai.beta.threads.messages.list(thread.id);
+      const lastMessage = messages.data[0];
+      const messageContent = lastMessage.content[0];
+
+      if ('text' in messageContent) {
+        return NextResponse.json({
+          threadId: thread.id,
+          message: messageContent.text.value
+        });
+      }
+    }
+
+    // Return default response if we couldn't get a proper response
     return NextResponse.json({
       threadId: thread.id,
-      message: lastMessage.content[0].text.value,
+      message: JSON.stringify(DEFAULT_RESPONSE)
     });
+
   } catch (error) {
-    console.error('Error in assistant chat:', error);
-    return NextResponse.json({ error: 'Failed to process message' }, { status: 500 });
+    console.error('Error in chat route:', error);
+    return NextResponse.json({
+      threadId: null,
+      message: JSON.stringify(DEFAULT_RESPONSE)
+    });
   }
 } 
