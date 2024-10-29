@@ -8,6 +8,30 @@ interface AIChatDrawerProps {
   isOpen: boolean
   onClose: () => void
   task: Task
+  taskContext: {
+    task: {
+      id: string
+      description: string
+      category: string
+      status: string
+      created_at: string
+      updated_at: string
+      assigned_to: string
+      created_by: string
+    }
+    subtasks: {
+      description: string
+      status: string
+      created_at: string
+      updated_at: string
+    }[]
+    metadata: {
+      total_subtasks: number
+      completed_subtasks: number
+      category: string
+      has_deadline: boolean
+    }
+  }
 }
 
 interface AIResponse {
@@ -17,26 +41,12 @@ interface AIResponse {
   confidence_score: number
 }
 
-export default function AIChatDrawer({ isOpen, onClose, task }: AIChatDrawerProps) {
+export default function AIChatDrawer({ isOpen, onClose, task, taskContext }: AIChatDrawerProps) {
   const [threadId, setThreadId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [currentResponse, setCurrentResponse] = useState<AIResponse | null>(null)
   const [chatHistory, setChatHistory] = useState<AIResponse[]>([])
   const [error, setError] = useState<string | null>(null)
-
-  const parseAIResponse = (message: string): AIResponse => {
-    try {
-      const parsed = JSON.parse(message);
-      // Validate the response has the required fields
-      if (!parsed.question || !Array.isArray(parsed.options)) {
-        throw new Error('Invalid response format');
-      }
-      return parsed;
-    } catch (e) {
-      console.error('Error parsing AI response:', e, 'Raw message:', message);
-      throw new Error('Failed to parse AI response');
-    }
-  };
 
   const startConversation = useCallback(async () => {
     if (!isOpen || threadId) return;
@@ -44,56 +54,64 @@ export default function AIChatDrawer({ isOpen, onClose, task }: AIChatDrawerProp
     setIsLoading(true);
     setError(null);
     
-    const timeoutId = setTimeout(() => {
-      setError('Request is taking longer than expected. Please try again.');
-      setIsLoading(false);
-    }, 30000); // 30 second timeout
-
     try {
-      console.log('Starting conversation with task:', task);
+      console.log('Starting conversation with task context:', taskContext);
       
-      const taskContext = {
-        description: task.description,
-        sub_tasks: task.sub_tasks?.map(st => st.description),
-      };
-
       const response = await fetch('/api/assistant/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          taskContext,
+          taskContext: {
+            task: {
+              description: taskContext.task.description,
+              category: taskContext.task.category,
+              status: taskContext.task.status,
+              assigned_to: taskContext.task.assigned_to,
+              created_by: taskContext.task.created_by
+            },
+            subtasks: taskContext.subtasks.map(st => ({
+              description: st.description,
+              status: st.status
+            })),
+            metadata: {
+              total_subtasks: taskContext.metadata.total_subtasks,
+              completed_subtasks: taskContext.metadata.completed_subtasks,
+              category: taskContext.metadata.category
+            }
+          }
         }),
       });
 
-      const data = await response.json();
-      console.log('Received response:', data);
+      if (!response.ok) {
+        throw new Error('Failed to start conversation');
+      }
 
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Failed to start conversation');
+      const data = await response.json();
+      console.log('Received initial response:', data);
+
+      if (data.error) {
+        throw new Error(data.error);
       }
 
       setThreadId(data.threadId);
-      const parsedResponse = parseAIResponse(data.message);
-      console.log('Parsed response:', parsedResponse);
-      
-      setCurrentResponse(parsedResponse);
-      setChatHistory([parsedResponse]);
+      try {
+        const parsedMessage = JSON.parse(data.message) as AIResponse;
+        console.log('Parsed response:', parsedMessage);
+        setCurrentResponse(parsedMessage);
+        setChatHistory([parsedMessage]);
+      } catch (e) {
+        console.error('Error parsing AI response:', e);
+        throw new Error('Invalid response format from AI');
+      }
     } catch (error) {
       console.error('Error starting conversation:', error);
       setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
-      clearTimeout(timeoutId);
       setIsLoading(false);
     }
-  }, [isOpen, threadId, task]);
-
-  useEffect(() => {
-    if (isOpen && !threadId && !isLoading) {
-      startConversation();
-    }
-  }, [isOpen, threadId, isLoading, startConversation]);
+  }, [isOpen, threadId, taskContext]);
 
   const handleOptionSelect = async (option: string) => {
     if (!threadId || isLoading) return;
@@ -102,7 +120,7 @@ export default function AIChatDrawer({ isOpen, onClose, task }: AIChatDrawerProp
     setError(null);
     
     try {
-      console.log('Sending option:', option);
+      console.log('Sending option with context:', { option, taskContext });
       
       const response = await fetch('/api/assistant/chat', {
         method: 'POST',
@@ -112,23 +130,32 @@ export default function AIChatDrawer({ isOpen, onClose, task }: AIChatDrawerProp
         body: JSON.stringify({
           threadId,
           message: option,
+          taskContext: {
+            task: taskContext.task,
+            subtasks: taskContext.subtasks,
+            metadata: taskContext.metadata
+          }
         }),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
 
       const data = await response.json();
       console.log('Received response for option:', data);
 
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Failed to send message');
+      if (data.error) {
+        throw new Error(data.error);
       }
 
-      const parsedResponse = parseAIResponse(data.message);
-      console.log('Parsed option response:', parsedResponse);
+      const parsedMessage = JSON.parse(data.message) as AIResponse;
+      console.log('Parsed option response:', parsedMessage);
       
-      setCurrentResponse(parsedResponse);
-      setChatHistory(prev => [...prev, parsedResponse]);
+      setCurrentResponse(parsedMessage);
+      setChatHistory(prev => [...prev, parsedMessage]);
 
-      if (parsedResponse.assessment === 'ready' && parsedResponse.confidence_score > 80) {
+      if (parsedMessage.assessment === 'ready' && parsedMessage.confidence_score > 80) {
         setTimeout(() => {
           onClose();
         }, 2000);
@@ -140,6 +167,12 @@ export default function AIChatDrawer({ isOpen, onClose, task }: AIChatDrawerProp
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen && !threadId && !isLoading) {
+      startConversation();
+    }
+  }, [isOpen, threadId, isLoading, startConversation]);
 
   // Reset state when drawer closes
   useEffect(() => {
@@ -178,7 +211,6 @@ export default function AIChatDrawer({ isOpen, onClose, task }: AIChatDrawerProp
           )}
 
           <div className="space-y-6">
-            {/* Chat History */}
             {chatHistory.length > 0 && (
               <div className="space-y-4">
                 {chatHistory.map((response, index) => (
@@ -194,7 +226,6 @@ export default function AIChatDrawer({ isOpen, onClose, task }: AIChatDrawerProp
               </div>
             )}
 
-            {/* Current Question */}
             {!isLoading && currentResponse && (
               <div className="bg-white p-4 rounded-lg shadow-sm border">
                 <p className="font-medium text-gray-900 mb-4">

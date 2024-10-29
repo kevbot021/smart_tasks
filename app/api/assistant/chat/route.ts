@@ -32,12 +32,39 @@ export async function POST(req: Request) {
       console.log('Creating new thread with context:', taskContext);
       thread = await openai.beta.threads.create();
       
-      // Include the word 'json' in the initial message
-      const contextMessage = `Please provide your response in JSON format. Here is the task context: ${JSON.stringify({
-        task: taskContext.description,
-        subtasks: taskContext.sub_tasks || [],
-        request: "Please help me understand this task better by asking relevant questions."
-      })}`;
+      // Format the task context in a more structured way
+      const formattedContext = {
+        mainTask: {
+          description: taskContext.description,
+          subtasks: taskContext.sub_tasks?.map((st: any) => st.description) || []
+        },
+        instruction: "Based on this specific task and its subtasks, help the user understand how to approach it. Ask relevant questions about the task's requirements, challenges, and execution. Reference specific aspects of the task in your questions."
+      };
+
+      const contextMessage = `
+        Please analyze this task and provide responses in JSON format.
+        
+        Task Context:
+        ${JSON.stringify(formattedContext, null, 2)}
+
+        For each response, generate:
+        1. A question specifically about this task
+        2. 3-4 options that relate to the task details
+        3. An assessment of user understanding
+        4. A confidence score
+
+        Example format:
+        {
+          "question": "[Task-specific question here]",
+          "options": [
+            "[Task-relevant option 1]",
+            "[Task-relevant option 2]",
+            "[Task-relevant option 3]"
+          ],
+          "assessment": "continuing",
+          "confidence_score": 0
+        }
+      `;
 
       await openai.beta.threads.messages.create(thread.id, {
         role: "user",
@@ -46,10 +73,10 @@ export async function POST(req: Request) {
     } else {
       thread = { id: threadId };
       if (message) {
-        // Include the word 'json' in follow-up messages
+        // Include task context in follow-up messages
         await openai.beta.threads.messages.create(thread.id, {
           role: "user",
-          content: `Please provide your response in JSON format. User selected: ${message}`
+          content: `User selected: "${message}". Continue with task-specific questions and provide response in JSON format.`
         });
       }
     }
@@ -57,10 +84,19 @@ export async function POST(req: Request) {
     console.log('Running assistant...');
     const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: process.env.OPENAI_ASSISTANT_ID,
-      instructions: `You are a helpful task assistant. Analyze the task and respond with questions to help the user understand it better. Always respond in JSON format with the following structure:
+      instructions: `You are a task analysis assistant. Your role is to help users understand their specific task by asking relevant questions.
+
+      Important guidelines:
+      1. Always reference specific aspects of the task in your questions
+      2. Generate options that are directly related to the task's details
+      3. Base your questions on the task description and subtasks
+      4. Maintain context throughout the conversation
+      5. Always respond in JSON format
+      
+      Response format:
       {
-        "question": "your question here",
-        "options": ["option1", "option2", "option3"],
+        "question": "Ask about specific aspects of the task",
+        "options": ["task-relevant option 1", "task-relevant option 2", "task-relevant option 3"],
         "assessment": "continuing",
         "confidence_score": 0
       }`

@@ -5,53 +5,107 @@ import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { createClient } from '@supabase/supabase-js'
 import type { Task, Subtask } from '@/types'
-import TaskDetailSkeleton from './loading'
-import { motion } from 'framer-motion'
 import AIChatDrawer from '@/components/AIChatDrawer'
+import { motion } from 'framer-motion'
+import TaskDetailSkeleton from './loading'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-interface TaskWithAssigner extends Task {
+interface TaskWithDetails {
+  id: string
+  description: string
+  is_complete: boolean
+  category: string
+  assigned_user_id: string | null
+  created_by_user_id: string
+  team_id: string
+  audio_summary?: string
+  cartoon_slides?: string
+  sub_tasks?: Subtask[]
   assigner?: {
+    id: string
     name: string
+    email: string
   }
+  assigned_user?: {
+    id: string
+    name: string
+    email: string
+  }
+  created_at?: string
+  updated_at?: string
 }
 
 export default function TaskDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const [task, setTask] = useState<TaskWithAssigner | null>(null)
+  const [task, setTask] = useState<TaskWithDetails | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isImageLoading, setIsImageLoading] = useState(true)
   const [isAIChatOpen, setIsAIChatOpen] = useState(false)
+  const [taskContext, setTaskContext] = useState<any>(null)
+  const [isImageLoading, setIsImageLoading] = useState(true)
 
   useEffect(() => {
-    const fetchTask = async () => {
+    const fetchTaskDetails = async () => {
       try {
-        console.log('Fetching task details:', params.id)
         const { data: taskData, error: taskError } = await supabase
           .from('tasks')
           .select(`
             *,
             sub_tasks (*),
-            assigner:created_by_user_id (name)
+            assigner:created_by_user_id (
+              id,
+              name,
+              email
+            ),
+            assigned_user:assigned_user_id (
+              id,
+              name,
+              email
+            )
           `)
           .eq('id', params.id)
           .single()
 
         if (taskError) throw taskError
-        console.log('Task data received:', taskData)
+
+        const aiContext = {
+          task: {
+            id: taskData.id,
+            description: taskData.description,
+            category: taskData.category,
+            status: taskData.is_complete ? 'completed' : 'in progress',
+            created_at: taskData.created_at,
+            updated_at: taskData.updated_at,
+            assigned_to: taskData.assigned_user?.name || 'Unassigned',
+            created_by: taskData.assigner?.name || 'Unknown'
+          },
+          subtasks: taskData.sub_tasks?.map((st: any) => ({
+            description: st.description,
+            status: st.is_complete ? 'completed' : 'pending',
+            created_at: st.created_at,
+            updated_at: st.updated_at
+          })) || [],
+          metadata: {
+            total_subtasks: taskData.sub_tasks?.length || 0,
+            completed_subtasks: taskData.sub_tasks?.filter((st: any) => st.is_complete).length || 0,
+            category: taskData.category,
+            has_deadline: false
+          }
+        }
+
         setTask(taskData)
+        setTaskContext(aiContext)
+        setIsLoading(false)
       } catch (error) {
-        console.error('Error fetching task:', error)
-      } finally {
+        console.error('Error fetching task details:', error)
         setIsLoading(false)
       }
     }
 
-    fetchTask()
+    fetchTaskDetails()
   }, [params.id])
 
   if (isLoading) {
@@ -186,11 +240,12 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
         )}
       </div>
 
-      {task && (
+      {task && taskContext && (
         <AIChatDrawer
           isOpen={isAIChatOpen}
           onClose={() => setIsAIChatOpen(false)}
-          task={task}
+          task={task as any}
+          taskContext={taskContext}
         />
       )}
     </motion.div>
