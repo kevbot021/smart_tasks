@@ -4,40 +4,29 @@ import { Button } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
 import type { Task } from '@/types'
 
+interface TaskContext {
+  task: {
+    description: string
+    category: string
+    status: string
+  }
+  subtasks: {
+    description: string
+    status: string
+  }[]
+}
+
 interface AIChatDrawerProps {
   isOpen: boolean
   onClose: () => void
   task: Task
-  taskContext: {
-    task: {
-      id: string
-      description: string
-      category: string
-      status: string
-      created_at: string
-      updated_at: string
-      assigned_to: string
-      created_by: string
-    }
-    subtasks: {
-      description: string
-      status: string
-      created_at: string
-      updated_at: string
-    }[]
-    metadata: {
-      total_subtasks: number
-      completed_subtasks: number
-      category: string
-      has_deadline: boolean
-    }
-  }
+  taskContext: TaskContext
 }
 
 interface AIResponse {
   question: string
   options: string[]
-  assessment: 'ready' | 'not_ready' | 'continuing'
+  assessment: 'continuing' | 'ready'
   confidence_score: number
 }
 
@@ -55,33 +44,24 @@ export default function AIChatDrawer({ isOpen, onClose, task, taskContext }: AIC
     setError(null);
     
     try {
-      console.log('Starting conversation with task context:', taskContext);
-      
-      const response = await fetch('/api/assistant/chat', {
+      const taskContext = {
+        task: {
+          description: task.description,
+          category: task.category || 'General',
+          status: task.is_complete ? 'completed' : 'in progress',
+        },
+        subtasks: task.sub_tasks?.map(st => ({
+          description: st.description,
+          status: st.is_complete ? 'completed' : 'pending'
+        })) || []
+      };
+
+      const response = await fetch('/api/generate-task-details', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          taskContext: {
-            task: {
-              description: taskContext.task.description,
-              category: taskContext.task.category,
-              status: taskContext.task.status,
-              assigned_to: taskContext.task.assigned_to,
-              created_by: taskContext.task.created_by
-            },
-            subtasks: taskContext.subtasks.map(st => ({
-              description: st.description,
-              status: st.status
-            })),
-            metadata: {
-              total_subtasks: taskContext.metadata.total_subtasks,
-              completed_subtasks: taskContext.metadata.completed_subtasks,
-              category: taskContext.metadata.category
-            }
-          }
-        }),
+        body: JSON.stringify({ taskContext })
       });
 
       if (!response.ok) {
@@ -89,29 +69,21 @@ export default function AIChatDrawer({ isOpen, onClose, task, taskContext }: AIC
       }
 
       const data = await response.json();
-      console.log('Received initial response:', data);
-
       if (data.error) {
         throw new Error(data.error);
       }
 
       setThreadId(data.threadId);
-      try {
-        const parsedMessage = JSON.parse(data.message) as AIResponse;
-        console.log('Parsed response:', parsedMessage);
-        setCurrentResponse(parsedMessage);
-        setChatHistory([parsedMessage]);
-      } catch (e) {
-        console.error('Error parsing AI response:', e);
-        throw new Error('Invalid response format from AI');
-      }
+      const parsedMessage = JSON.parse(data.message) as AIResponse;
+      setCurrentResponse(parsedMessage);
+      setChatHistory([parsedMessage]);
     } catch (error) {
       console.error('Error starting conversation:', error);
       setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen, threadId, taskContext]);
+  }, [isOpen, threadId, task]);
 
   const handleOptionSelect = async (option: string) => {
     if (!threadId || isLoading) return;
@@ -120,9 +92,7 @@ export default function AIChatDrawer({ isOpen, onClose, task, taskContext }: AIC
     setError(null);
     
     try {
-      console.log('Sending option with context:', { option, taskContext });
-      
-      const response = await fetch('/api/assistant/chat', {
+      const response = await fetch('/api/generate-task-details', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -131,11 +101,17 @@ export default function AIChatDrawer({ isOpen, onClose, task, taskContext }: AIC
           threadId,
           message: option,
           taskContext: {
-            task: taskContext.task,
-            subtasks: taskContext.subtasks,
-            metadata: taskContext.metadata
+            task: {
+              description: task.description,
+              category: task.category || 'General',
+              status: task.is_complete ? 'completed' : 'in progress',
+            },
+            subtasks: task.sub_tasks?.map(st => ({
+              description: st.description,
+              status: st.is_complete ? 'completed' : 'pending'
+            })) || []
           }
-        }),
+        })
       });
 
       if (!response.ok) {
@@ -143,15 +119,11 @@ export default function AIChatDrawer({ isOpen, onClose, task, taskContext }: AIC
       }
 
       const data = await response.json();
-      console.log('Received response for option:', data);
-
       if (data.error) {
         throw new Error(data.error);
       }
 
       const parsedMessage = JSON.parse(data.message) as AIResponse;
-      console.log('Parsed option response:', parsedMessage);
-      
       setCurrentResponse(parsedMessage);
       setChatHistory(prev => [...prev, parsedMessage]);
 
@@ -211,6 +183,7 @@ export default function AIChatDrawer({ isOpen, onClose, task, taskContext }: AIC
           )}
 
           <div className="space-y-6">
+            {/* Chat History */}
             {chatHistory.length > 0 && (
               <div className="space-y-4">
                 {chatHistory.map((response, index) => (
@@ -226,6 +199,7 @@ export default function AIChatDrawer({ isOpen, onClose, task, taskContext }: AIC
               </div>
             )}
 
+            {/* Current Question */}
             {!isLoading && currentResponse && (
               <div className="bg-white p-4 rounded-lg shadow-sm border">
                 <p className="font-medium text-gray-900 mb-4">

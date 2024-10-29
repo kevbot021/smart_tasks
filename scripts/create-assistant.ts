@@ -1,81 +1,160 @@
 import OpenAI from 'openai';
 import * as dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// Load environment variables
 dotenv.config({ path: '.env.local' });
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-async function createAssistant() {
+async function createOrUpdateAssistant() {
   try {
-    const assistant = await openai.beta.assistants.create({
-      name: "Task Helper",
-      instructions: `You are a helpful task assistant that helps users understand their tasks and subtasks. 
-      Your goal is to ask targeted questions with multiple choice answers to gauge the user's understanding.
-      
-      You MUST ALWAYS respond with valid JSON in the following format:
-      {
-        "question": "your question here",
-        "options": ["option1", "option2", "option3"],
-        "assessment": "ready|not_ready|continuing",
-        "confidence_score": 0-100
-      }
-      
-      Follow these guidelines:
-      1. Ask one question at a time
-      2. Provide 2-4 multiple choice options for each question
-      3. Base your questions on the task and subtask context provided
-      4. Adjust your questions based on user responses
-      5. After 3-5 questions, assess if the user is ready to start
-      6. If they seem ready, ask if they want to begin the task
-      7. Keep responses concise and focused`,
-      model: "gpt-4-1106-preview",
-      tools: [{
-        type: "function",
-        function: {
-          name: "generate_question",
-          description: "Generate a question with multiple choice options to help user understand the task",
-          parameters: {
-            type: "object",
-            properties: {
-              question: {
-                type: "string",
-                description: "The question to ask the user"
-              },
-              options: {
-                type: "array",
-                items: {
-                  type: "string"
-                },
-                description: "Array of possible answers"
-              },
-              assessment: {
-                type: "string",
-                enum: ["ready", "not_ready", "continuing"],
-                description: "Assessment of user's readiness"
-              },
-              confidence_score: {
-                type: "number",
-                minimum: 0,
-                maximum: 100,
-                description: "Confidence score from 0 to 100"
-              }
-            },
-            required: ["question", "options", "assessment", "confidence_score"]
-          }
-        }
-      }],
-      response_format: { type: "json_object" }
-    });
+    const assistantId = process.env.OPENAI_ASSISTANT_ID;
+    let assistant;
 
-    console.log('Assistant created successfully!');
-    console.log('Assistant ID:', assistant.id);
-    console.log('Add this ID to your .env.local file as OPENAI_ASSISTANT_ID');
+    if (assistantId) {
+      console.log('Checking existing assistant...');
+      try {
+        assistant = await openai.beta.assistants.retrieve(assistantId);
+        console.log('Found existing assistant:', assistant.id);
+        
+        // Update the existing assistant
+        assistant = await openai.beta.assistants.update(
+          assistantId,
+          {
+            instructions: `You are a task analysis assistant that helps users understand their tasks.
+            
+            When analyzing a task:
+            1. Consider the task description and context
+            2. Review all subtasks
+            3. Help users break down and understand the task
+
+            Always respond with a JSON object containing:
+            - question: A specific question about the task
+            - options: Array of 2-4 relevant response options
+            - assessment: "continuing" or "ready"
+            - confidence_score: Number between 0 and 100`,
+            model: "gpt-4-1106-preview",
+            tools: [{
+              type: "function",
+              function: {
+                name: "analyze_task",
+                description: "Generate a structured response for task analysis",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    question: {
+                      type: "string",
+                      description: "A specific question about the task"
+                    },
+                    options: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Array of 2-4 task-specific response options"
+                    },
+                    assessment: {
+                      type: "string",
+                      enum: ["continuing", "ready"],
+                      description: "Whether to continue asking questions"
+                    },
+                    confidence_score: {
+                      type: "number",
+                      minimum: 0,
+                      maximum: 100,
+                      description: "Confidence in user's understanding"
+                    }
+                  },
+                  required: ["question", "options", "assessment", "confidence_score"]
+                }
+              }
+            }],
+            response_format: { type: "json_object" }
+          }
+        );
+        console.log('Updated assistant configuration');
+      } catch (e) {
+        console.log('Existing assistant not found, creating new one...');
+      }
+    }
+
+    if (!assistant) {
+      // Create new assistant with JSON response format
+      assistant = await openai.beta.assistants.create({
+        name: "Task Analysis Assistant",
+        instructions: `You are a task analysis assistant that helps users understand their tasks.
+        
+        When analyzing a task:
+        1. Consider the task description and context
+        2. Review all subtasks
+        3. Help users break down and understand the task
+
+        Always respond with a JSON object containing:
+        - question: A specific question about the task
+        - options: Array of 2-4 relevant response options
+        - assessment: "continuing" or "ready"
+        - confidence_score: Number between 0 and 100`,
+        model: "gpt-4-1106-preview",
+        tools: [{
+          type: "function",
+          function: {
+            name: "analyze_task",
+            description: "Generate a structured response for task analysis",
+            parameters: {
+              type: "object",
+              properties: {
+                question: {
+                  type: "string",
+                  description: "A specific question about the task"
+                },
+                options: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Array of 2-4 task-specific response options"
+                },
+                assessment: {
+                  type: "string",
+                  enum: ["continuing", "ready"],
+                  description: "Whether to continue asking questions"
+                },
+                confidence_score: {
+                  type: "number",
+                  minimum: 0,
+                  maximum: 100,
+                  description: "Confidence in user's understanding"
+                }
+              },
+              required: ["question", "options", "assessment", "confidence_score"]
+            }
+          }
+        }],
+        response_format: { type: "json_object" }
+      });
+
+      console.log('Created new assistant:', assistant.id);
+    }
+
+    // Save the assistant ID to .env.local
+    const envPath = path.join(process.cwd(), '.env.local');
+    let envContent = fs.readFileSync(envPath, 'utf-8');
+    
+    if (envContent.includes('OPENAI_ASSISTANT_ID=')) {
+      envContent = envContent.replace(
+        /OPENAI_ASSISTANT_ID=.*/,
+        `OPENAI_ASSISTANT_ID=${assistant.id}`
+      );
+    } else {
+      envContent += `\nOPENAI_ASSISTANT_ID=${assistant.id}`;
+    }
+    
+    fs.writeFileSync(envPath, envContent);
+    console.log('Updated .env.local with assistant ID');
+    console.log('Assistant is ready to use');
+
   } catch (error) {
-    console.error('Error creating assistant:', error);
+    console.error('Error:', error);
   }
 }
 
-createAssistant(); 
+createOrUpdateAssistant();

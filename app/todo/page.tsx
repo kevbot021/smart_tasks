@@ -8,7 +8,7 @@ import AddTask from '../../components/AddTask'
 import InviteTeamMember from '../../components/InviteTeamMember'
 import { Button } from "@/components/ui/button"
 import { Settings } from 'lucide-react'
-import type { Task, Subtask } from '@/types'
+import type { Task, User } from '@/types'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,7 +38,7 @@ export default function ToDoPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [userId, setUserId] = useState('')
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['All'])
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [teamMembers, setTeamMembers] = useState<User[]>([])
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
 
@@ -267,11 +267,11 @@ export default function ToDoPage() {
     await fetchTasks(userId, isAdmin, teamId)
   }
 
-  const handleAssignTask = async (taskId: string, assignedUserId: string) => {
+  const handleAssignTask = async (taskId: string, assignedUserId: string | null) => {
     try {
       const { error } = await supabase
         .from('tasks')
-        .update({ assigned_user_id: assignedUserId === 'unassigned' ? null : assignedUserId })
+        .update({ assigned_user_id: assignedUserId })
         .eq('id', taskId)
 
       if (error) {
@@ -281,13 +281,13 @@ export default function ToDoPage() {
 
       setTasks(prevTasks => prevTasks.map(task => 
         task.id === taskId 
-          ? { ...task, assigned_user_id: assignedUserId === 'unassigned' ? null : assignedUserId }
+          ? { ...task, assigned_user_id: assignedUserId }
           : task
       ))
 
       setFilteredTasks(prevFilteredTasks => prevFilteredTasks.map(task => 
         task.id === taskId 
-          ? { ...task, assigned_user_id: assignedUserId === 'unassigned' ? null : assignedUserId }
+          ? { ...task, assigned_user_id: assignedUserId }
           : task
       ))
 

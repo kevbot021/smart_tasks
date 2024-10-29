@@ -4,48 +4,21 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { createClient } from '@supabase/supabase-js'
-import type { Task, Subtask } from '@/types'
+import type { Task, TaskContext } from '@/types'
 import AIChatDrawer from '@/components/AIChatDrawer'
 import { motion } from 'framer-motion'
-import TaskDetailSkeleton from './loading'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-interface TaskWithDetails {
-  id: string
-  description: string
-  is_complete: boolean
-  category: string
-  assigned_user_id: string | null
-  created_by_user_id: string
-  team_id: string
-  audio_summary?: string
-  cartoon_slides?: string
-  sub_tasks?: Subtask[]
-  assigner?: {
-    id: string
-    name: string
-    email: string
-  }
-  assigned_user?: {
-    id: string
-    name: string
-    email: string
-  }
-  created_at?: string
-  updated_at?: string
-}
-
 export default function TaskDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const [task, setTask] = useState<TaskWithDetails | null>(null)
+  const [task, setTask] = useState<Task | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isAIChatOpen, setIsAIChatOpen] = useState(false)
-  const [taskContext, setTaskContext] = useState<any>(null)
-  const [isImageLoading, setIsImageLoading] = useState(true)
+  const [taskContext, setTaskContext] = useState<TaskContext | null>(null)
 
   useEffect(() => {
     const fetchTaskDetails = async () => {
@@ -71,29 +44,17 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
 
         if (taskError) throw taskError
 
-        const aiContext = {
+        // Format context for AI
+        const aiContext: TaskContext = {
           task: {
-            id: taskData.id,
             description: taskData.description,
-            category: taskData.category,
-            status: taskData.is_complete ? 'completed' : 'in progress',
-            created_at: taskData.created_at,
-            updated_at: taskData.updated_at,
-            assigned_to: taskData.assigned_user?.name || 'Unassigned',
-            created_by: taskData.assigner?.name || 'Unknown'
+            category: taskData.category || 'General',
+            status: taskData.is_complete ? 'completed' : 'in progress'
           },
           subtasks: taskData.sub_tasks?.map((st: any) => ({
             description: st.description,
-            status: st.is_complete ? 'completed' : 'pending',
-            created_at: st.created_at,
-            updated_at: st.updated_at
-          })) || [],
-          metadata: {
-            total_subtasks: taskData.sub_tasks?.length || 0,
-            completed_subtasks: taskData.sub_tasks?.filter((st: any) => st.is_complete).length || 0,
-            category: taskData.category,
-            has_deadline: false
-          }
+            status: st.is_complete ? 'completed' : 'pending'
+          })) || []
         }
 
         setTask(taskData)
@@ -109,7 +70,7 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
   }, [params.id])
 
   if (isLoading) {
-    return <TaskDetailSkeleton />
+    return <div>Loading...</div>
   }
 
   if (!task) {
@@ -162,30 +123,6 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
             Assigned by: {task.assigner?.name || 'Unknown'}
           </p>
         </motion.div>
-
-        {task.cartoon_slides && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: isImageLoading ? 0 : 1 }}
-            transition={{ duration: 0.3 }}
-          >
-            <h2 className="text-xl font-semibold mb-4">Task Visualization</h2>
-            <div className="relative">
-              {isImageLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                </div>
-              )}
-              <img 
-                src={task.cartoon_slides} 
-                alt="Task visualization"
-                className="w-full rounded-lg shadow-lg"
-                onLoad={() => setIsImageLoading(false)}
-                style={{ opacity: isImageLoading ? 0 : 1 }}
-              />
-            </div>
-          </motion.div>
-        )}
 
         {task.sub_tasks && task.sub_tasks.length > 0 && (
           <motion.div
@@ -244,7 +181,7 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
         <AIChatDrawer
           isOpen={isAIChatOpen}
           onClose={() => setIsAIChatOpen(false)}
-          task={task as any}
+          task={task}
           taskContext={taskContext}
         />
       )}
