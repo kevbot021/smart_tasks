@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Task, Subtask } from '@/types'
 import TaskDetailSkeleton from './loading'
 import { motion } from 'framer-motion'
+import AIChatDrawer from '@/components/AIChatDrawer'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,6 +25,7 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
   const [task, setTask] = useState<TaskWithAssigner | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isImageLoading, setIsImageLoading] = useState(true)
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false)
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -78,13 +80,22 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
       exit={{ opacity: 0, y: -20 }}
       className="container mx-auto p-6 max-w-2xl"
     >
-      <Button 
-        onClick={() => router.back()}
-        variant="ghost"
-        className="mb-6"
-      >
-        ← Back
-      </Button>
+      <div className="flex justify-between items-center mb-6">
+        <Button 
+          onClick={() => router.back()}
+          variant="ghost"
+        >
+          ← Back
+        </Button>
+        
+        <Button
+          onClick={() => setIsAIChatOpen(true)}
+          variant="default"
+          className="bg-gradient-to-r from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800"
+        >
+          Get Help with AI
+        </Button>
+      </div>
 
       <div className="space-y-8">
         <motion.div
@@ -174,6 +185,14 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
           </motion.div>
         )}
       </div>
+
+      {task && (
+        <AIChatDrawer
+          isOpen={isAIChatOpen}
+          onClose={() => setIsAIChatOpen(false)}
+          task={task}
+        />
+      )}
     </motion.div>
   )
 } 
