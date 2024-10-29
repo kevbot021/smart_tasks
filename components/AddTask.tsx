@@ -78,32 +78,26 @@ export default function AddTask({ onAddTask, userId, teamId }: AddTaskProps) {
         })
       });
 
-      let updatedTaskData = { ...taskData };
-
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Failed to generate subtasks:', errorData);
+        // Still add the task to UI even if subtask generation fails
+        onAddTask(taskData);
       } else {
         const data = await response.json();
         console.log('Generated task details:', data);
         
-        // Fetch the updated task with its subtasks
-        const { data: refreshedTask, error: refreshError } = await supabase
-          .from('tasks')
-          .select(`
-            *,
-            sub_tasks (*)
-          `)
-          .eq('id', taskData.id)
-          .single();
+        // Create an updated task object with the new category and subtasks
+        const updatedTaskData = {
+          ...taskData,
+          category: data.category, // Update the category from the API response
+          sub_tasks: data.subtasks // Add the generated subtasks
+        };
 
-        if (!refreshError && refreshedTask) {
-          updatedTaskData = refreshedTask;
-        }
+        // Add the updated task to the UI
+        onAddTask(updatedTaskData);
       }
 
-      // Add the task to the UI
-      onAddTask(updatedTaskData);
       setDescription('');
 
     } catch (error) {

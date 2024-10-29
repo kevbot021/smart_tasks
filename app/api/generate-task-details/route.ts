@@ -27,21 +27,21 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate subtasks and category using OpenAI
+    // Generate subtasks and category using OpenAI with more flexible categorization
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         { 
           role: "system", 
-          content: "You are a helpful assistant that generates subtasks and categorizes tasks. Respond with exactly 3 numbered subtasks followed by a category line. Use only these categories: Development, Design, Marketing, or Planning." 
+          content: "You are a helpful assistant that generates subtasks and categorizes tasks. For each task, suggest a concise, single-word category that best describes the task's nature. Then provide 3 subtasks to help complete the main task." 
         },
         { 
           role: "user", 
-          content: `For this task: "${taskDescription}", generate 3 subtasks and suggest one of these categories: Development, Design, Marketing, or Planning. Format your response as:
+          content: `For this task: "${taskDescription}", first suggest a single-word category that best describes this task, then generate 3 subtasks to help complete it. Format your response exactly as:
+          Category: [single word category]
           1. [First subtask]
           2. [Second subtask]
-          3. [Third subtask]
-          Category: [category]` 
+          3. [Third subtask]` 
         }
       ],
       temperature: 0.7,
@@ -54,11 +54,11 @@ export async function POST(req: Request) {
     const response = completion.choices[0].message.content;
     console.log('OpenAI response:', response);
 
-    // Parse the response
+    // Parse the response - looking for Category first
     const lines = response.split('\n').filter(line => line.trim());
     
-    // Get the category (last line)
-    const categoryLine = lines.pop() || '';
+    // Get the category (first line)
+    const categoryLine = lines.shift() || '';
     const category = categoryLine.includes('Category:') 
       ? categoryLine.replace('Category:', '').trim() 
       : 'Uncategorized';
@@ -82,14 +82,13 @@ export async function POST(req: Request) {
       throw updateError;
     }
 
-    // Insert subtasks - Let Supabase handle all timestamps
+    // Insert subtasks
     const subtaskData = subtasks.map(description => ({
       description,
       task_id: taskId,
       is_complete: false
     }));
 
-    // Using RPC call to insert subtasks
     const { data: insertedSubtasks, error: subtaskError } = await supabase
       .from('sub_tasks')
       .insert(subtaskData)
