@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { getColorForCategory } from '@/lib/utils'
+import TaskCard from '../../components/TaskCard'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -452,7 +453,7 @@ export default function ToDoPage() {
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
           </div>
-        ) : (
+        ) : isAdmin ? (
           <>
             <AddTask 
               onAddTask={handleAddTask}
@@ -475,6 +476,16 @@ export default function ToDoPage() {
               ))}
             </div>
           </>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredTasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                assignerName={teamMembers.find(m => m.id === task.created_by_user_id)?.name}
+              />
+            ))}
+          </div>
         )}
         {showInviteModal && (
           <InviteTeamMember
