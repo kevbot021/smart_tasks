@@ -47,6 +47,7 @@ export default function TaskItem({
   const [isAudioLoading, setIsAudioLoading] = useState(true)
   const [audioLoaded, setAudioLoaded] = useState(false)
   const [imageDialogOpen, setImageDialogOpen] = useState(false)
+  const [isImageLoading, setIsImageLoading] = useState(true)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
@@ -84,6 +85,12 @@ export default function TaskItem({
       }
     }
   }, [task.audio_summary])
+
+  useEffect(() => {
+    if (task.cartoon_slides) {
+      setIsImageLoading(false)
+    }
+  }, [task.cartoon_slides])
 
   const handlePlayAudio = () => {
     if (!audioRef.current || !audioLoaded) return
@@ -126,30 +133,37 @@ export default function TaskItem({
           {task.description}
         </span>
         <div className="flex items-center space-x-2">
-          {task.audio_summary && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={handlePlayAudio}
-              disabled={isAudioLoading || !audioLoaded}
-              className={isAudioLoading ? 'opacity-50 cursor-not-allowed' : ''}
-            >
-              {isAudioLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : isPlaying ? (
-                <Pause className="h-4 w-4" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-            </Button>
-          )}
-          {task.cartoon_slides && (
-            <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="ghost" size="sm">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handlePlayAudio}
+            disabled={isAudioLoading || !audioLoaded}
+            className={isAudioLoading ? 'opacity-50 cursor-not-allowed' : ''}
+          >
+            {isAudioLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isPlaying ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+          </Button>
+          <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
+            <DialogTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                disabled={isImageLoading}
+                className={isImageLoading ? 'opacity-50 cursor-not-allowed' : ''}
+              >
+                {isImageLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
                   <Image className="h-4 w-4" />
-                </Button>
-              </DialogTrigger>
+                )}
+              </Button>
+            </DialogTrigger>
+            {task.cartoon_slides && (
               <DialogContent className="max-w-4xl">
                 <img 
                   src={task.cartoon_slides} 
@@ -157,8 +171,8 @@ export default function TaskItem({
                   className="w-full h-auto rounded-lg"
                 />
               </DialogContent>
-            </Dialog>
-          )}
+            )}
+          </Dialog>
           <Badge 
             variant="outline" 
             className={`${categoryColor.bg} ${categoryColor.text} ${categoryColor.border}`}
