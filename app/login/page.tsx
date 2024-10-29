@@ -1,3 +1,4 @@
+import { signIn } from 'next-auth/react';
 import AuthForm from '../../components/auth-form';
 import { getBaseUrl } from '../utils/config';
 

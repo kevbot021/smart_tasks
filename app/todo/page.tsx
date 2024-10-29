@@ -7,9 +7,8 @@ import TaskItem from '../../components/TaskItem'
 import AddTask from '../../components/AddTask'
 import InviteTeamMember from '../../components/InviteTeamMember'
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Play, Settings } from 'lucide-react'
+import { Settings } from 'lucide-react'
+import type { Task, Subtask } from '@/types'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,29 +22,9 @@ import { getColorForCategory } from '@/lib/utils'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-interface Task {
-  id: string
-  description: string
-  is_complete: boolean
-  category: string
-  assigned_user_id: string | null
-  created_by_user_id: string
-  team_id: string
-  sub_tasks?: Subtask[]
-  audio_summary?: string
-  cartoon_slides?: string[]  // Add this line to fix the type error
-}
-
-interface Subtask {
-  id: string
-  description: string
-  is_complete: boolean
-}
-
 interface TeamMember {
   id: string
   name: string
-  // Remove avatar_url from here
 }
 
 export default function ToDoPage() {
@@ -60,26 +39,6 @@ export default function ToDoPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['All'])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const router = useRouter()
-
-  useEffect(() => {
-    fetchUserAndTeamInfo()
-  }, [])
-
-  useEffect(() => {
-    if (userId && teamId && isAdmin !== undefined) {
-      fetchTasks(userId, isAdmin)
-    }
-  }, [userId, teamId, isAdmin])
-
-  useEffect(() => {
-    filterTasks()
-  }, [tasks, selectedCategories])
-
-  useEffect(() => {
-    if (teamId) {
-      fetchTeamMembers()
-    }
-  }, [teamId])
 
   const fetchUserAndTeamInfo = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -114,11 +73,9 @@ export default function ToDoPage() {
   const fetchTasks = async (userId: string, isAdmin: boolean) => {
     try {
       if (!teamId) {
-        console.log('Team ID is not set yet');
-        return;
+        console.log('Team ID is not set yet')
+        return
       }
-
-      console.log(`Fetching tasks for user ${userId}, isAdmin: ${isAdmin}`);
 
       let query = supabase
         .from('tasks')
@@ -126,26 +83,25 @@ export default function ToDoPage() {
           *,
           sub_tasks (*)
         `)
-        .eq('team_id', teamId);
+        .eq('team_id', teamId)
 
       if (!isAdmin) {
-        query = query.eq('assigned_user_id', userId);
+        query = query.eq('assigned_user_id', userId)
       }
 
-      const { data: taskData, error: taskError } = await query.order('created_at', { ascending: false });
+      const { data: taskData, error: taskError } = await query.order('created_at', { ascending: false })
 
       if (taskError) {
-        console.error('Error fetching tasks:', taskError);
-        return;
+        console.error('Error fetching tasks:', taskError)
+        return
       }
 
-      console.log('Fetched tasks:', taskData);
-      setTasks(taskData || []);
-      setFilteredTasks(taskData || []);
+      setTasks(taskData || [])
+      setFilteredTasks(taskData || [])
     } catch (error) {
-      console.error('Error in fetchTasks:', error);
+      console.error('Error in fetchTasks:', error)
     }
-  };
+  }
 
   const fetchTeamMembers = async () => {
     try {
@@ -173,6 +129,26 @@ export default function ToDoPage() {
     }
   }
 
+  useEffect(() => {
+    fetchUserAndTeamInfo()
+  }, [])
+
+  useEffect(() => {
+    if (userId && isAdmin !== undefined) {
+      fetchTasks(userId, isAdmin)
+    }
+  }, [userId, isAdmin, teamId])
+
+  useEffect(() => {
+    filterTasks()
+  }, [tasks, selectedCategories])
+
+  useEffect(() => {
+    if (teamId) {
+      fetchTeamMembers()
+    }
+  }, [teamId])
+
   const handleCategoryToggle = (category: string) => {
     setSelectedCategories(prev => {
       if (category === 'All') {
@@ -187,11 +163,8 @@ export default function ToDoPage() {
 
   const handleAddTask = async (newTask: Task) => {
     try {
-      // Since the task is already created in AddTask.tsx,
-      // we just need to update the local state
       setTasks(prevTasks => [newTask, ...prevTasks])
       
-      // Optionally, refresh the tasks to get the subtasks
       await fetchTasks(userId, isAdmin)
     } catch (error) {
       console.error('Error adding task:', error)
@@ -222,7 +195,6 @@ export default function ToDoPage() {
 
   const handleAssignTask = async (taskId: string, assignedUserId: string) => {
     try {
-      // Update the task in the database
       const { error } = await supabase
         .from('tasks')
         .update({ assigned_user_id: assignedUserId === 'unassigned' ? null : assignedUserId })
@@ -233,14 +205,12 @@ export default function ToDoPage() {
         throw error
       }
 
-      // Update the local state
       setTasks(prevTasks => prevTasks.map(task => 
         task.id === taskId 
           ? { ...task, assigned_user_id: assignedUserId === 'unassigned' ? null : assignedUserId }
           : task
       ))
 
-      // Update filteredTasks as well
       setFilteredTasks(prevFilteredTasks => prevFilteredTasks.map(task => 
         task.id === taskId 
           ? { ...task, assigned_user_id: assignedUserId === 'unassigned' ? null : assignedUserId }
@@ -265,7 +235,6 @@ export default function ToDoPage() {
 
   const handleUpdateTask = async (taskId: string, newDescription: string) => {
     try {
-      // Update the task description
       const { error: updateError } = await supabase
         .from('tasks')
         .update({ description: newDescription })
@@ -273,7 +242,6 @@ export default function ToDoPage() {
 
       if (updateError) throw updateError
 
-      // Generate new subtasks
       const response = await fetch('/api/generate-subtasks', {
         method: 'POST',
         headers: {
@@ -288,7 +256,6 @@ export default function ToDoPage() {
 
       const { subtasks } = await response.json()
 
-      // Delete old subtasks
       const { error: deleteError } = await supabase
         .from('sub_tasks')
         .delete()
@@ -296,7 +263,6 @@ export default function ToDoPage() {
 
       if (deleteError) throw deleteError
 
-      // Insert new subtasks
       const { error: insertError } = await supabase
         .from('sub_tasks')
         .insert(subtasks.map((subtaskDescription: string) => ({
@@ -307,7 +273,6 @@ export default function ToDoPage() {
 
       if (insertError) throw insertError
 
-      // Fetch the updated task with new subtasks
       await fetchTasks(userId, isAdmin)
     } catch (error) {
       console.error('Error updating task:', error)
@@ -318,7 +283,6 @@ export default function ToDoPage() {
     try {
       console.log(`Attempting to delete task with ID: ${taskId}`);
 
-      // Delete the task from the database
       const { error: taskError } = await supabase
         .from('tasks')
         .delete()
@@ -331,7 +295,6 @@ export default function ToDoPage() {
 
       console.log(`Task ${taskId} deleted from database successfully`);
 
-      // Delete associated subtasks
       const { error: subtasksError } = await supabase
         .from('sub_tasks')
         .delete()
@@ -339,10 +302,8 @@ export default function ToDoPage() {
 
       if (subtasksError) {
         console.error('Error deleting subtasks:', subtasksError);
-        // We don't throw here as the main task is already deleted
       }
 
-      // Remove the task from the local state
       setTasks(prevTasks => {
         const newTasks = prevTasks.filter(task => task.id !== taskId);
         console.log(`Tasks after deletion:`, newTasks);
@@ -352,7 +313,6 @@ export default function ToDoPage() {
 
       console.log(`Task ${taskId} removed from local state`);
 
-      // Fetch tasks again to ensure local state is in sync with the database
       await fetchTasks(userId, isAdmin);
 
     } catch (error) {
@@ -420,10 +380,7 @@ export default function ToDoPage() {
           {filteredTasks.map((task) => (
             <TaskItem
               key={task.id}
-              task={{
-                ...task,
-                cartoon_slides: task.cartoon_slides || [] // Ensure cartoon_slides is always an array
-              }}
+              task={task}
               teamMembers={teamMembers}
               isAdmin={isAdmin}
               onToggleComplete={handleToggleComplete}
