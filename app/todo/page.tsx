@@ -42,50 +42,75 @@ export default function ToDoPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   const fetchUserAndTeamInfo = async () => {
+    console.group('👤 Fetching User & Team Info');
+    console.time('User info fetch duration');
+    
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      console.log('🔍 Getting user session...');
+      const { data: { user } } = await supabase.auth.getUser();
+      
       if (!user) {
-        router.push('/login')
-        return
+        console.warn('❌ No user found, redirecting to login');
+        router.push('/login');
+        return;
       }
 
-      setUserId(user.id)
-      
+      console.log('✅ User found:', { userId: user.id });
+      setUserId(user.id);
+
+      console.log('🔍 Fetching user details...');
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('name, team_id, role')
         .eq('id', user.id)
-        .single()
+        .single();
 
-      if (userError) throw userError
+      if (userError) {
+        console.error('❌ Error fetching user data:', userError);
+        throw userError;
+      }
 
-      setUserName(userData.name)
-      setTeamId(userData.team_id)
-      setIsAdmin(userData.role === 'admin')
+      console.log('✅ User details:', userData);
+      setUserName(userData.name);
+      setTeamId(userData.team_id);
+      setIsAdmin(userData.role === 'admin');
 
+      console.log('🔍 Fetching team details...');
       const { data: teamData, error: teamError } = await supabase
         .from('teams')
         .select('name')
         .eq('id', userData.team_id)
-        .single()
+        .single();
 
-      if (teamError) throw teamError
+      if (teamError) {
+        console.error('❌ Error fetching team data:', teamError);
+        throw teamError;
+      }
 
-      setTeamName(teamData.name)
+      console.log('✅ Team details:', teamData);
+      setTeamName(teamData.name);
+
     } catch (error) {
-      console.error('Error in fetchUserAndTeamInfo:', error)
+      console.error('❌ Error in fetchUserAndTeamInfo:', error);
+    } finally {
+      console.timeEnd('User info fetch duration');
+      console.groupEnd();
     }
   }
 
   const fetchTasks = async (userId: string, isAdmin: boolean, teamId: string) => {
+    const startTime = performance.now();
+    console.group('📡 Fetching Tasks');
+    console.log('Request params:', { userId, isAdmin, teamId });
+    
     try {
-      setIsLoading(true)
       if (!teamId || !userId) {
-        console.log('Required IDs not available yet')
-        return
+        console.warn('❌ Missing required IDs', { teamId, userId });
+        return;
       }
 
-      console.log('Fetching tasks with:', { userId, isAdmin, teamId })
+      setIsLoading(true);
+      console.time('Task fetch duration');
 
       let query = supabase
         .from('tasks')
@@ -93,39 +118,64 @@ export default function ToDoPage() {
           *,
           sub_tasks (*)
         `)
-        .eq('team_id', teamId)
+        .eq('team_id', teamId);
 
       if (!isAdmin) {
-        query = query.eq('assigned_user_id', userId)
+        query = query.eq('assigned_user_id', userId);
       }
 
-      const { data: taskData, error: taskError } = await query.order('created_at', { ascending: false })
+      console.log('🔍 Executing Supabase query...');
+      const { data: taskData, error: taskError } = await query.order('created_at', { ascending: false });
 
       if (taskError) {
-        console.error('Error fetching tasks:', taskError)
-        return
+        console.error('❌ Error fetching tasks:', taskError);
+        return;
       }
 
-      console.log('Tasks fetched:', taskData?.length)
-      setTasks(taskData || [])
-      setFilteredTasks(taskData || [])
+      const endTime = performance.now();
+      console.log(`✅ Tasks fetched successfully in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`📊 Fetched ${taskData?.length || 0} tasks`);
+      console.log('First task sample:', taskData?.[0]);
+
+      setTasks(taskData || []);
+      setFilteredTasks(taskData || []);
+    } catch (error) {
+      console.error('❌ Error in fetchTasks:', error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
+      console.timeEnd('Task fetch duration');
+      console.groupEnd();
     }
   }
 
   const fetchTeamMembers = async () => {
+    console.group('👥 Fetching Team Members');
+    console.time('Team members fetch duration');
+    
     try {
+      if (!teamId) {
+        console.warn('❌ No teamId available');
+        return;
+      }
+
+      console.log('🔍 Fetching team members for team:', teamId);
       const { data, error } = await supabase
         .from('users')
         .select('id, name')
-        .eq('team_id', teamId)
+        .eq('team_id', teamId);
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Error fetching team members:', error);
+        throw error;
+      }
 
-      setTeamMembers(data || [])
+      console.log(`✅ Fetched ${data?.length || 0} team members`);
+      setTeamMembers(data || []);
     } catch (error) {
-      console.error('Error fetching team members:', error)
+      console.error('❌ Error in fetchTeamMembers:', error);
+    } finally {
+      console.timeEnd('Team members fetch duration');
+      console.groupEnd();
     }
   }
 
