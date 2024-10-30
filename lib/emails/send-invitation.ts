@@ -13,7 +13,7 @@ export async function sendInvitationEmail({
 }) {
   try {
     const { data, error } = await resend.emails.send({
-      from: 'Smart Tasks <invites@yourdomain.com>',
+      from: 'Smart Tasks <test@myracetimecalculator.run>',
       to: email,
       subject: `You've been invited to join ${teamName} on Smart Tasks`,
       html: `

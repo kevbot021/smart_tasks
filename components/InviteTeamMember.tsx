@@ -2,16 +2,15 @@
 
 import React, { useState } from 'react';
 import type { FormEvent } from 'react';
+import { toast } from "sonner"
 
 interface InviteTeamMemberProps {
-  onInvite?: (email: string) => Promise<void>
   className?: string
   teamId: string
   onClose: () => void
 }
 
 export const InviteTeamMember: React.FC<InviteTeamMemberProps> = ({
-  onInvite,
   className = '',
   teamId,
   onClose,
@@ -21,14 +20,31 @@ export const InviteTeamMember: React.FC<InviteTeamMemberProps> = ({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email || !onInvite) return;
+    if (!email) return;
 
     try {
       setIsLoading(true);
-      await onInvite(email);
+      
+      const response = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, teamId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send invitation');
+      }
+
+      toast.success('Invitation sent successfully');
       setEmail('');
+      onClose();
     } catch (error) {
       console.error('Failed to invite team member:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to send invitation');
     } finally {
       setIsLoading(false);
     }
@@ -50,7 +66,7 @@ export const InviteTeamMember: React.FC<InviteTeamMemberProps> = ({
         disabled={isLoading}
         className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
       >
-        {isLoading ? 'Inviting...' : 'Invite Team Member'}
+        {isLoading ? 'Sending Invitation...' : 'Invite Team Member'}
       </button>
     </form>
   );
