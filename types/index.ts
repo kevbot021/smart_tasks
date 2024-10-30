@@ -13,20 +13,25 @@ export interface Task {
   id: string;
   description: string;
   is_complete: boolean;
-  category: string;
-  assigned_user_id: string | null;
+  category?: string;
+  assigned_user_id?: string;
+  created_by_user_id?: string;
   team_id: string;
   created_at: string;
-  created_by_user_id: string;
   audio_summary?: string;
   image?: string;
-  sub_tasks?: Subtask[];
   cartoon_slides?: string;
   assigner?: {
     id: string;
     name: string;
     email: string;
   };
+  assigned_user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  sub_tasks?: Subtask[];
 }
 
 export interface Subtask {
