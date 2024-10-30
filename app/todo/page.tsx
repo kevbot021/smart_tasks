@@ -20,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { getColorForCategory } from '@/lib/utils'
 import TaskCard from '../../components/TaskCard'
 import { TeamManagementModal } from "@/components/TeamManagementModal"
+import { toast } from "sonner"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -43,7 +44,7 @@ export default function ToDoPage() {
     console.time('User info fetch duration');
     
     try {
-      console.log('🔍 Getting user session...');
+      console.log(' Getting user session...');
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -280,28 +281,39 @@ export default function ToDoPage() {
         .update({ assigned_user_id: assignedUserId })
         .eq('id', taskId)
 
-      if (error) {
-        console.error('Error assigning task:', error)
-        throw error
+      if (error) throw error;
+
+      if (assignedUserId) {
+        const response = await fetch('/api/task-notifications', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            taskId,
+            assigneeId: assignedUserId,
+            assignerId: userId
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to send task notification');
+        }
+        
+        toast.success('Task assigned and notification sent');
       }
 
       setTasks(prevTasks => prevTasks.map(task => 
         task.id === taskId 
           ? { ...task, assigned_user_id: assignedUserId }
           : task
-      ))
+      ));
 
-      setFilteredTasks(prevFilteredTasks => prevFilteredTasks.map(task => 
-        task.id === taskId 
-          ? { ...task, assigned_user_id: assignedUserId }
-          : task
-      ))
-
-      console.log(`Task ${taskId} assigned to user ${assignedUserId}`)
     } catch (error) {
-      console.error('Error in handleAssignTask:', error)
+      console.error('Error assigning task:', error);
+      toast.error('Failed to assign task');
     }
-  }
+  };
 
   const handleLogout = async () => {
     try {
