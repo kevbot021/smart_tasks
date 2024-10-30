@@ -23,14 +23,6 @@ import TaskCard from '../../components/TaskCard'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-interface Task {
-  description: string;
-  assigner?: {
-    name: string;
-  };
-  // ... other task properties
-}
-
 export default function ToDoPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [filteredTasks, setFilteredTasks] = useState<Task[]>([])
