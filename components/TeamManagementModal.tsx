@@ -3,20 +3,61 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InviteTeamMember } from "./InviteTeamMember"
 import { TeamMember } from "@/types"
+import { createClient } from '@supabase/supabase-js'
+import { toast } from "sonner"
+import { Trash2 } from "lucide-react"
+import { useState } from "react"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface TeamManagementModalProps {
   isOpen: boolean
   onClose: () => void
   teamId: string
   teamMembers: TeamMember[]
+  currentUserId: string
 }
 
 export function TeamManagementModal({
   isOpen,
   onClose,
   teamId,
-  teamMembers
+  teamMembers,
+  currentUserId
 }: TeamManagementModalProps) {
+  const [isRemoving, setIsRemoving] = useState<string | null>(null);
+
+  const handleRemoveMember = async (memberId: string) => {
+    try {
+      setIsRemoving(memberId);
+
+      // Don't allow removing yourself
+      if (memberId === currentUserId) {
+        toast.error("You cannot remove yourself");
+        return;
+      }
+
+      const { error } = await supabase
+        .from('users')
+        .update({ team_id: null })
+        .eq('id', memberId);
+
+      if (error) throw error;
+
+      toast.success('Team member removed successfully');
+      // You might want to refresh the team members list here
+      
+    } catch (error) {
+      console.error('Failed to remove team member:', error);
+      toast.error('Failed to remove team member');
+    } finally {
+      setIsRemoving(null);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
@@ -28,11 +69,21 @@ export function TeamManagementModal({
         <div className="mb-6">
           <h3 className="text-sm font-medium mb-2">Current Members</h3>
           <div className="space-y-2">
-            {teamMembers.map((member) => (
-              <div key={member.id} className="flex items-center justify-between">
-                <span>{member.name}</span>
-              </div>
-            ))}
+            {teamMembers
+              .filter(member => member.id !== currentUserId) // Hide current admin
+              .map((member) => (
+                <div key={member.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
+                  <span>{member.name}</span>
+                  <button
+                    onClick={() => handleRemoveMember(member.id)}
+                    disabled={isRemoving === member.id}
+                    className="text-red-500 hover:text-red-700 p-1 rounded-md transition-colors"
+                    title="Remove member"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
           </div>
         </div>
 

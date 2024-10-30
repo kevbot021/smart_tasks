@@ -499,6 +499,7 @@ export default function ToDoPage() {
             onClose={() => setShowTeamModal(false)}
             teamId={teamId}
             teamMembers={teamMembers}
+            currentUserId={userId}
           />
         )}
       </main>
