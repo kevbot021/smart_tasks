@@ -13,20 +13,25 @@ export interface Task {
   id: string;
   description: string;
   is_complete: boolean;
-  category: string;
+  category?: string;
   assigned_user_id: string | null;
+  created_by_user_id?: string;
   team_id: string;
   created_at: string;
-  created_by_user_id: string;
   audio_summary?: string;
   image?: string;
-  sub_tasks?: Subtask[];
   cartoon_slides?: string;
   assigner?: {
     id: string;
     name: string;
     email: string;
   };
+  assigned_user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  sub_tasks?: Subtask[];
 }
 
 export interface Subtask {
@@ -53,4 +58,27 @@ export interface AIResponse {
   options: string[]
   assessment: 'continuing' | 'ready'
   confidence_score: number
+}
+
+export interface Invitation {
+  id: string;
+  team_id: string;
+  email: string;
+  name: string;
+  status: 'pending' | 'accepted' | 'expired' | 'cancelled';
+  token: string;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+  teams?: {
+    name: string;
+  };
+}
+
+export interface PendingInvite {
+  id: string;
+  email: string;
+  name: string;
+  status: 'pending' | 'accepted' | 'expired' | 'cancelled';
+  created_at: string;
 } 
