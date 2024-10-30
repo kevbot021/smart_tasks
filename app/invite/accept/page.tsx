@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { toast } from "sonner"
+import { Invitation } from '@/types'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,10 +14,14 @@ const supabase = createClient(
 export default function AcceptInvitePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const token = searchParams.get('token')
+  const token = searchParams?.get('token')
   const [isLoading, setIsLoading] = useState(true)
-  const [invitation, setInvitation] = useState<any>(null)
+  const [invitation, setInvitation] = useState<Invitation | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [isSigningUp, setIsSigningUp] = useState(false)
 
   useEffect(() => {
     async function validateInvitation() {
@@ -49,6 +54,8 @@ export default function AcceptInvitePage() {
         }
 
         setInvitation(invitation)
+        setEmail(invitation.email)
+        setName(invitation.name)
       } catch (error) {
         setError(error instanceof Error ? error.message : 'Failed to validate invitation')
       } finally {
@@ -59,44 +66,60 @@ export default function AcceptInvitePage() {
     validateInvitation()
   }, [token])
 
-  const handleAcceptInvitation = async () => {
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!invitation || !email || !password || !name) return
+
     try {
-      setIsLoading(true)
+      setIsSigningUp(true)
 
-      // Check if user is already authenticated
-      const { data: { user } } = await supabase.auth.getUser()
+      // 1. Create the user account in auth
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            team_id: invitation.team_id,
+            role: 'member'
+          }
+        }
+      })
 
-      if (!user) {
-        // Store invitation token in localStorage and redirect to signup
-        localStorage.setItem('pendingInvitation', token!)
-        router.push('/signup')
-        return
-      }
+      if (signUpError) throw signUpError
 
-      // Update user's team_id
-      const { error: updateError } = await supabase
+      // 2. Create the user in the users table
+      const { error: userError } = await supabase
         .from('users')
-        .update({ team_id: invitation.team_id })
-        .eq('id', user.id)
+        .insert({
+          id: authData.user!.id,
+          email: email,
+          name: name,
+          team_id: invitation.team_id,
+          role: 'member'
+        })
 
-      if (updateError) throw updateError
+      if (userError) throw userError
 
-      // Mark invitation as accepted
+      // 3. Only after user is created, update invitation status
       const { error: inviteError } = await supabase
         .from('invitations')
-        .update({ status: 'accepted' })
+        .update({ 
+          status: 'accepted',
+          name: name // Update the name in invitations table too
+        })
         .eq('id', invitation.id)
 
       if (inviteError) throw inviteError
 
-      toast.success('Invitation accepted successfully')
-      router.push('/todo')
+      toast.success('Account created successfully! Please check your email to verify your account.')
+      router.push('/login')
 
     } catch (error) {
-      console.error('Error accepting invitation:', error)
-      toast.error('Failed to accept invitation')
+      console.error('Error signing up:', error)
+      toast.error('Failed to create account')
     } finally {
-      setIsLoading(false)
+      setIsSigningUp(false)
     }
   }
 
@@ -122,17 +145,49 @@ export default function AcceptInvitePage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full p-8 bg-white rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold text-center mb-6">Team Invitation</h1>
+        <h1 className="text-2xl font-bold text-center mb-6">Create Your Account</h1>
         <p className="text-center mb-6">
-          You've been invited to join {invitation.teams.name} on Smart Tasks
+          Join {invitation?.teams?.name} on Smart Tasks
         </p>
-        <button
-          onClick={handleAcceptInvitation}
-          disabled={isLoading}
-          className="w-full px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
-        >
-          {isLoading ? 'Processing...' : 'Accept Invitation'}
-        </button>
+        <form onSubmit={handleSignUp} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1 w-full px-4 py-2 border rounded-md"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Email</label>
+            <input
+              type="email"
+              value={email}
+              readOnly
+              className="mt-1 w-full px-4 py-2 border rounded-md bg-gray-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 w-full px-4 py-2 border rounded-md"
+              required
+              minLength={6}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isSigningUp}
+            className="w-full px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
+          >
+            {isSigningUp ? 'Creating Account...' : 'Create Account'}
+          </button>
+        </form>
       </div>
     </div>
   )

@@ -1,11 +1,11 @@
 "use client"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { TeamMember } from "@/types"
+import { TeamMember, PendingInvite } from "@/types"
 import { createClient } from '@supabase/supabase-js'
 import { toast } from "sonner"
-import { Trash2 } from "lucide-react"
-import { useState } from "react"
+import { Trash2, Clock } from "lucide-react"
+import { useState, useEffect } from "react"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,6 +31,29 @@ export function TeamManagementModal({
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchPendingInvites();
+    }
+  }, [isOpen, teamId]);
+
+  const fetchPendingInvites = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('invitations')
+        .select('id, email, name, status, created_at')
+        .eq('team_id', teamId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPendingInvites(data || []);
+    } catch (error) {
+      console.error('Failed to fetch pending invites:', error);
+    }
+  };
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +79,7 @@ export function TeamManagementModal({
       toast.success('Invitation sent successfully');
       setEmail('');
       setName('');
+      fetchPendingInvites(); // Refresh the pending invites list
     } catch (error) {
       console.error('Failed to invite team member:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to send invitation');
@@ -64,29 +88,20 @@ export function TeamManagementModal({
     }
   };
 
-  const handleRemoveMember = async (memberId: string) => {
+  const handleCancelInvite = async (inviteId: string) => {
     try {
-      setIsRemoving(memberId);
-
-      if (memberId === currentUserId) {
-        toast.error("You cannot remove yourself");
-        return;
-      }
-
       const { error } = await supabase
-        .from('users')
-        .update({ team_id: null })
-        .eq('id', memberId);
+        .from('invitations')
+        .update({ status: 'cancelled' })
+        .eq('id', inviteId);
 
       if (error) throw error;
 
-      toast.success('Team member removed successfully');
-      
+      toast.success('Invitation cancelled');
+      fetchPendingInvites();
     } catch (error) {
-      console.error('Failed to remove team member:', error);
-      toast.error('Failed to remove team member');
-    } finally {
-      setIsRemoving(null);
+      console.error('Failed to cancel invitation:', error);
+      toast.error('Failed to cancel invitation');
     }
   };
 
@@ -132,6 +147,33 @@ export function TeamManagementModal({
             </button>
           </form>
         </div>
+
+        {/* Pending Invites */}
+        {pendingInvites.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-sm font-medium mb-2">Pending Invitations</h3>
+            <div className="space-y-2">
+              {pendingInvites.map((invite) => (
+                <div key={invite.id} className="flex items-center justify-between p-2 bg-yellow-50 rounded-md">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="h-4 w-4 text-yellow-500" />
+                    <div>
+                      <div className="font-medium">{invite.name}</div>
+                      <div className="text-sm text-gray-500">{invite.email}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleCancelInvite(invite.id)}
+                    className="text-red-500 hover:text-red-700 p-1 rounded-md transition-colors"
+                    title="Cancel invitation"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Current Team Members */}
         <div>

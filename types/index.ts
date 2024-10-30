@@ -64,9 +64,21 @@ export interface Invitation {
   id: string;
   team_id: string;
   email: string;
+  name: string;
   status: 'pending' | 'accepted' | 'expired' | 'cancelled';
   token: string;
   created_at: string;
   updated_at: string;
   expires_at: string;
+  teams?: {
+    name: string;
+  };
+}
+
+export interface PendingInvite {
+  id: string;
+  email: string;
+  name: string;
+  status: 'pending' | 'accepted' | 'expired' | 'cancelled';
+  created_at: string;
 } 
