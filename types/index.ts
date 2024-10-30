@@ -13,13 +13,14 @@ export interface Task {
   id: string;
   description: string;
   is_complete: boolean;
-  category?: string;
-  assigned_user_id?: string | null;
+  category: string;
+  assigned_user_id: string | null;
   team_id: string;
   created_at: string;
   audio_summary?: string;
   image?: string;
   sub_tasks?: Subtask[];
+  cartoon_slides?: string;
 }
 
 export interface Subtask {
