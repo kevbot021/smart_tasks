@@ -121,21 +121,37 @@ export async function POST(req: Request) {
     // Handle media generation during 'media' stage
     if (stage === 'media') {
       // Generate audio summary
-      const audioSummaryText = `Task: ${taskDescription}. This is a ${body.category} task. It has ${body.subtasks.length} subtasks: ${body.subtasks.map(st => st.description).join('. ')}`;
+      const audioSummaryText = `Task: ${taskDescription}. This is a ${body.category} task. It has ${body.subtasks.length} subtasks: ${body.subtasks.map((st: { description: string }) => st.description).join('. ')}`;
       
-      const mp3Response = await openai.audio.speech.create({
-        model: "tts-1",
-        voice: "alloy",
-        input: audioSummaryText,
-      });
+      // Generate both audio and cartoon in parallel
+      const [mp3Response, cartoonResponse] = await Promise.all([
+        // Audio generation
+        openai.audio.speech.create({
+          model: "tts-1",
+          voice: "alloy",
+          input: audioSummaryText,
+        }),
+        // Cartoon generation
+        openai.images.generate({
+          model: "dall-e-3",
+          prompt: `Create a simple, cartoon-style visualization of this task: ${taskDescription}. Include visual representations of these subtasks: ${body.subtasks.map((st: { description: string }) => st.description).join(', ')}`,
+          size: "1024x1024",
+          quality: "standard",
+          n: 1,
+        })
+      ]);
 
       const buffer = Buffer.from(await mp3Response.arrayBuffer());
       const base64Audio = buffer.toString('base64');
+      const cartoonUrl = cartoonResponse.data[0]?.url;
 
-      // Update task with audio summary
+      // Update task with both audio summary and cartoon slides
       const { error: updateError } = await supabase
         .from('tasks')
-        .update({ audio_summary: base64Audio })
+        .update({ 
+          audio_summary: base64Audio,
+          cartoon_slides: cartoonUrl
+        })
         .eq('id', taskId);
 
       if (updateError) throw updateError;
@@ -143,6 +159,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ 
         success: true,
         audio_summary: base64Audio,
+        cartoon_slides: cartoonUrl
       });
     }
 
