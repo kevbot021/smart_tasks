@@ -22,6 +22,11 @@ export interface Task {
   image?: string;
   sub_tasks?: Subtask[];
   cartoon_slides?: string;
+  assigner?: {
+    id: string;
+    name: string;
+    email: string;
+  };
 }
 
 export interface Subtask {
