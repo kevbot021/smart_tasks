@@ -92,7 +92,7 @@ export default function AcceptInvitePage() {
           data: {
             name,
             team_id: invitation.team_id,
-            role: 'member'
+            role: 'user'
           }
         }
       })
@@ -108,7 +108,7 @@ export default function AcceptInvitePage() {
           email: email,
           name: name,
           team_id: invitation.team_id,
-          role: 'member'
+          role: 'user'
         })
 
       if (userError) {

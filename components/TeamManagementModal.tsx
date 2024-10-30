@@ -105,6 +105,34 @@ export function TeamManagementModal({
     }
   };
 
+  const handleRemoveMember = async (memberId: string) => {
+    try {
+      setIsRemoving(memberId);
+
+      if (memberId === currentUserId) {
+        toast.error("You cannot remove yourself");
+        return;
+      }
+
+      const { error } = await supabase
+        .from('users')
+        .update({ team_id: null })
+        .eq('id', memberId);
+
+      if (error) throw error;
+
+      toast.success('Team member removed successfully');
+      // Refresh the team members list in the parent component
+      window.location.reload();
+      
+    } catch (error) {
+      console.error('Failed to remove team member:', error);
+      toast.error('Failed to remove team member');
+    } finally {
+      setIsRemoving(null);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
