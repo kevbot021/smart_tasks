@@ -31,13 +31,11 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     
-    // Handle AI chat request
     if (body.threadId || body.taskContext) {
       return handleAIChatRequest(body);
     }
     
-    // Handle task details generation
-    const { taskDescription, taskId } = body;
+    const { taskDescription, taskId, stage } = body;
 
     if (!taskDescription || !taskId) {
       return NextResponse.json(
@@ -46,106 +44,109 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate subtasks and category using OpenAI
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        { 
-          role: "system", 
-          content: "You are a helpful assistant that generates subtasks and categorizes tasks. For each task, suggest a concise, single-word category that best describes the task's nature. Then provide 3 subtasks to help complete the main task." 
-        },
-        { 
-          role: "user", 
-          content: `For this task: "${taskDescription}", first suggest a single-word category that best describes this task, then generate 3 subtasks to help complete it. Format your response exactly as:
-          Category: [single word category]
-          1. [First subtask]
-          2. [Second subtask]
-          3. [Third subtask]` 
-        }
-      ],
-      temperature: 0.7,
-    });
+    // Only generate text content (category and subtasks) during the 'text' stage
+    if (stage === 'text') {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+          { 
+            role: "system", 
+            content: "You are a helpful assistant that generates subtasks and categorizes tasks. For each task, suggest a concise, single-word category that best describes the task's nature. Then provide 3 subtasks to help complete the main task." 
+          },
+          { 
+            role: "user", 
+            content: `For this task: "${taskDescription}", first suggest a single-word category that best describes this task, then generate 3 subtasks to help complete it. Format your response exactly as:
+            Category: [single word category]
+            1. [First subtask]
+            2. [Second subtask]
+            3. [Third subtask]` 
+          }
+        ],
+        temperature: 0.7,
+      });
 
-    if (!completion.choices[0]?.message?.content) {
-      throw new Error('No completion content received from OpenAI');
-    }
+      if (!completion.choices[0]?.message?.content) {
+        throw new Error('No completion content received from OpenAI');
+      }
 
-    const response = completion.choices[0].message.content;
-    console.log('OpenAI response:', response);
+      const response = completion.choices[0].message.content;
+      console.log('OpenAI response:', response);
 
-    // Parse the response - looking for Category first
-    const lines = response.split('\n').filter(line => line.trim());
-    
-    // Get the category (first line)
-    const categoryLine = lines.shift() || '';
-    const category = categoryLine.includes('Category:') 
-      ? categoryLine.replace('Category:', '').trim() 
-      : 'Uncategorized';
+      // Parse the response - looking for Category first
+      const lines = response.split('\n').filter(line => line.trim());
+      
+      // Get the category (first line)
+      const categoryLine = lines.shift() || '';
+      const category = categoryLine.includes('Category:') 
+        ? categoryLine.replace('Category:', '').trim() 
+        : 'Uncategorized';
 
-    // Get subtasks (remaining lines)
-    const subtasks = lines
-      .map(line => line.replace(/^\d+\.\s*/, '').trim())
-      .filter(line => line.length > 0)
-      .slice(0, 3);
+      // Get subtasks (remaining lines)
+      const subtasks = lines
+        .map(line => line.replace(/^\d+\.\s*/, '').trim())
+        .filter(line => line.length > 0)
+        .slice(0, 3);
 
-    console.log('Processed data:', { category, subtasks });
+      console.log('Processed data:', { category, subtasks });
 
-    // Generate audio summary
-    const audioSummaryText = `Task: ${taskDescription}. This is a ${category} task. It has ${subtasks.length} subtasks: ${subtasks.join('. ')}`;
-    
-    // Generate audio using OpenAI TTS
-    const mp3Response = await openai.audio.speech.create({
-      model: "tts-1",
-      voice: "alloy",
-      input: audioSummaryText,
-    });
-
-    // Convert the audio to base64
-    const buffer = Buffer.from(await mp3Response.arrayBuffer());
-    const base64Audio = buffer.toString('base64');
-
-    // Update task with the category and audio summary
-    const { error: updateError } = await supabase
-      .from('tasks')
-      .update({ 
-        category,
-        audio_summary: base64Audio
-      })
-      .eq('id', taskId);
-
-    if (updateError) {
-      console.error('Error updating task:', updateError);
-      throw updateError;
-    }
-
-    // Insert subtasks
-    const subtaskData = subtasks.map(description => ({
-      description,
-      task_id: taskId,
-      is_complete: false
-    }));
-
-    const { data: insertedSubtasks, error: subtaskError } = await supabase
-      .from('sub_tasks')
-      .insert(subtaskData)
-      .select(`
-        id,
+      // Insert subtasks only during 'text' stage
+      const subtaskData = subtasks.map(description => ({
         description,
-        task_id,
-        is_complete
-      `);
+        task_id: taskId,
+        is_complete: false
+      }));
 
-    if (subtaskError) {
-      console.error('Error inserting subtasks:', subtaskError);
-      throw subtaskError;
+      const { data: insertedSubtasks, error: subtaskError } = await supabase
+        .from('sub_tasks')
+        .insert(subtaskData)
+        .select();
+
+      if (subtaskError) throw subtaskError;
+
+      // Update task with category
+      const { error: updateError } = await supabase
+        .from('tasks')
+        .update({ category })
+        .eq('id', taskId);
+
+      if (updateError) throw updateError;
+
+      return NextResponse.json({ 
+        success: true, 
+        category,
+        subtasks: insertedSubtasks,
+      });
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      category,
-      subtasks: insertedSubtasks,
-      audio_summary: base64Audio
-    });
+    // Handle media generation during 'media' stage
+    if (stage === 'media') {
+      // Generate audio summary
+      const audioSummaryText = `Task: ${taskDescription}. This is a ${body.category} task. It has ${body.subtasks.length} subtasks: ${body.subtasks.map(st => st.description).join('. ')}`;
+      
+      const mp3Response = await openai.audio.speech.create({
+        model: "tts-1",
+        voice: "alloy",
+        input: audioSummaryText,
+      });
+
+      const buffer = Buffer.from(await mp3Response.arrayBuffer());
+      const base64Audio = buffer.toString('base64');
+
+      // Update task with audio summary
+      const { error: updateError } = await supabase
+        .from('tasks')
+        .update({ audio_summary: base64Audio })
+        .eq('id', taskId);
+
+      if (updateError) throw updateError;
+
+      return NextResponse.json({ 
+        success: true,
+        audio_summary: base64Audio,
+      });
+    }
+
+    return NextResponse.json({ error: 'Invalid stage parameter' }, { status: 400 });
 
   } catch (error) {
     console.error('Error in generate-task-details:', error);
