@@ -1,7 +1,6 @@
 "use client"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { InviteTeamMember } from "./InviteTeamMember"
 import { TeamMember } from "@/types"
 import { createClient } from '@supabase/supabase-js'
 import { toast } from "sonner"
@@ -29,12 +28,46 @@ export function TeamManagementModal({
   currentUserId
 }: TeamManagementModalProps) {
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !name) return;
+
+    try {
+      setIsLoading(true);
+      
+      const response = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, teamId, name }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send invitation');
+      }
+
+      toast.success('Invitation sent successfully');
+      setEmail('');
+      setName('');
+    } catch (error) {
+      console.error('Failed to invite team member:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to send invitation');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleRemoveMember = async (memberId: string) => {
     try {
       setIsRemoving(memberId);
 
-      // Don't allow removing yourself
       if (memberId === currentUserId) {
         toast.error("You cannot remove yourself");
         return;
@@ -48,7 +81,6 @@ export function TeamManagementModal({
       if (error) throw error;
 
       toast.success('Team member removed successfully');
-      // You might want to refresh the team members list here
       
     } catch (error) {
       console.error('Failed to remove team member:', error);
@@ -65,12 +97,48 @@ export function TeamManagementModal({
           <DialogTitle>Team Management</DialogTitle>
         </DialogHeader>
         
-        {/* Current Team Members */}
+        {/* Invite Form */}
         <div className="mb-6">
+          <h3 className="text-sm font-medium mb-2">Invite New Member</h3>
+          <form onSubmit={handleInvite} className="space-y-4">
+            <div>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter name"
+                disabled={isLoading}
+                className="w-full px-4 py-2 border rounded-md"
+                required
+              />
+            </div>
+            <div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter email address"
+                disabled={isLoading}
+                className="w-full px-4 py-2 border rounded-md"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
+            >
+              {isLoading ? 'Sending Invitation...' : 'Invite Team Member'}
+            </button>
+          </form>
+        </div>
+
+        {/* Current Team Members */}
+        <div>
           <h3 className="text-sm font-medium mb-2">Current Members</h3>
           <div className="space-y-2">
             {teamMembers
-              .filter(member => member.id !== currentUserId) // Hide current admin
+              .filter(member => member.id !== currentUserId)
               .map((member) => (
                 <div key={member.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
                   <span>{member.name}</span>
@@ -85,15 +153,6 @@ export function TeamManagementModal({
                 </div>
               ))}
           </div>
-        </div>
-
-        {/* Invite Form */}
-        <div>
-          <h3 className="text-sm font-medium mb-2">Invite New Member</h3>
-          <InviteTeamMember 
-            teamId={teamId} 
-            onClose={onClose}
-          />
         </div>
       </DialogContent>
     </Dialog>
