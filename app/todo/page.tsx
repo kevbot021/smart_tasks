@@ -20,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { getColorForCategory } from '@/lib/utils'
 import TaskCard from '../../components/TaskCard'
 import { TeamManagementModal } from "@/components/TeamManagementModal"
+import { toast } from "sonner"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -43,7 +44,7 @@ export default function ToDoPage() {
     console.time('User info fetch duration');
     
     try {
-      console.log('🔍 Getting user session...');
+      console.log(' Getting user session...');
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -275,33 +276,70 @@ export default function ToDoPage() {
 
   const handleAssignTask = async (taskId: string, assignedUserId: string | null) => {
     try {
-      const { error } = await supabase
+      // Show loading toast
+      const loadingToast = toast.loading(
+        assignedUserId ? 'Assigning task...' : 'Unassigning task...'
+      );
+
+      // Update task assignment
+      const { error: updateError } = await supabase
         .from('tasks')
         .update({ assigned_user_id: assignedUserId })
-        .eq('id', taskId)
+        .eq('id', taskId);
 
-      if (error) {
-        console.error('Error assigning task:', error)
-        throw error
+      if (updateError) throw updateError;
+
+      // If someone is being assigned (not unassigning), send notification
+      if (assignedUserId) {
+        const response = await fetch('/api/task-notifications', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            taskId,
+            assigneeId: assignedUserId,
+            assignerId: userId
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to send task notification');
+        }
       }
 
+      // Update local state
       setTasks(prevTasks => prevTasks.map(task => 
         task.id === taskId 
           ? { ...task, assigned_user_id: assignedUserId }
           : task
-      ))
+      ));
 
-      setFilteredTasks(prevFilteredTasks => prevFilteredTasks.map(task => 
-        task.id === taskId 
-          ? { ...task, assigned_user_id: assignedUserId }
-          : task
-      ))
+      // Show success toast
+      toast.dismiss(loadingToast);
+      toast.success(
+        assignedUserId 
+          ? 'Task assigned and notification sent' 
+          : 'Task unassigned successfully'
+      );
 
-      console.log(`Task ${taskId} assigned to user ${assignedUserId}`)
     } catch (error) {
-      console.error('Error in handleAssignTask:', error)
+      console.error('Error in task assignment:', error);
+      toast.error(
+        error instanceof Error 
+          ? error.message 
+          : 'Failed to update task assignment'
+      );
+
+      // Revert local state on error
+      setTasks(prevTasks => prevTasks.map(task => 
+        task.id === taskId 
+          ? { ...task, assigned_user_id: task.assigned_user_id }
+          : task
+      ));
     }
-  }
+  };
 
   const handleLogout = async () => {
     try {
