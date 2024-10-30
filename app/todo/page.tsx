@@ -112,7 +112,17 @@ export default function ToDoPage() {
         .from('tasks')
         .select(`
           *,
-          sub_tasks (*)
+          sub_tasks (*),
+          assigner:created_by_user_id (
+            id,
+            name,
+            email
+          ),
+          assigned_user:assigned_user_id (
+            id,
+            name,
+            email
+          )
         `)
         .eq('team_id', teamId);
 
