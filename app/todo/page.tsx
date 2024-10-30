@@ -276,13 +276,20 @@ export default function ToDoPage() {
 
   const handleAssignTask = async (taskId: string, assignedUserId: string | null) => {
     try {
-      const { error } = await supabase
+      // Show loading toast
+      const loadingToast = toast.loading(
+        assignedUserId ? 'Assigning task...' : 'Unassigning task...'
+      );
+
+      // Update task assignment
+      const { error: updateError } = await supabase
         .from('tasks')
         .update({ assigned_user_id: assignedUserId })
-        .eq('id', taskId)
+        .eq('id', taskId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
+      // If someone is being assigned (not unassigning), send notification
       if (assignedUserId) {
         const response = await fetch('/api/task-notifications', {
           method: 'POST',
@@ -297,21 +304,40 @@ export default function ToDoPage() {
         });
 
         if (!response.ok) {
-          throw new Error('Failed to send task notification');
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to send task notification');
         }
-        
-        toast.success('Task assigned and notification sent');
       }
 
+      // Update local state
       setTasks(prevTasks => prevTasks.map(task => 
         task.id === taskId 
           ? { ...task, assigned_user_id: assignedUserId }
           : task
       ));
 
+      // Show success toast
+      toast.dismiss(loadingToast);
+      toast.success(
+        assignedUserId 
+          ? 'Task assigned and notification sent' 
+          : 'Task unassigned successfully'
+      );
+
     } catch (error) {
-      console.error('Error assigning task:', error);
-      toast.error('Failed to assign task');
+      console.error('Error in task assignment:', error);
+      toast.error(
+        error instanceof Error 
+          ? error.message 
+          : 'Failed to update task assignment'
+      );
+
+      // Revert local state on error
+      setTasks(prevTasks => prevTasks.map(task => 
+        task.id === taskId 
+          ? { ...task, assigned_user_id: task.assigned_user_id }
+          : task
+      ));
     }
   };
 
