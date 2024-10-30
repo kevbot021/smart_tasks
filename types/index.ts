@@ -58,4 +58,15 @@ export interface AIResponse {
   options: string[]
   assessment: 'continuing' | 'ready'
   confidence_score: number
+}
+
+export interface Invitation {
+  id: string;
+  team_id: string;
+  email: string;
+  status: 'pending' | 'accepted' | 'expired' | 'cancelled';
+  token: string;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
 } 
