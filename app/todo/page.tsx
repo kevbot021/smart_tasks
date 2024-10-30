@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import TaskItem from '../../components/TaskItem'
 import AddTask from '../../components/AddTask'
-import InviteTeamMember from '../../components/InviteTeamMember'
 import { Button } from "@/components/ui/button"
 import { Settings } from 'lucide-react'
 import type { Task, TeamMember } from '@/types'
@@ -20,6 +19,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { getColorForCategory } from '@/lib/utils'
 import TaskCard from '../../components/TaskCard'
+import { TeamManagementModal } from "@/components/TeamManagementModal"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -36,6 +36,7 @@ export default function ToDoPage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
+  const [showTeamModal, setShowTeamModal] = useState(false)
 
   const fetchUserAndTeamInfo = async () => {
     console.group('👤 Fetching User & Team Info');
@@ -444,7 +445,7 @@ export default function ToDoPage() {
               <DropdownMenuLabel>Settings</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {isAdmin && (
-                <DropdownMenuItem onClick={() => setShowInviteModal(true)}>
+                <DropdownMenuItem onClick={() => setShowTeamModal(true)}>
                   View Team
                 </DropdownMenuItem>
               )}
@@ -492,10 +493,12 @@ export default function ToDoPage() {
             ))}
           </div>
         )}
-        {showInviteModal && (
-          <InviteTeamMember
+        {showTeamModal && (
+          <TeamManagementModal
+            isOpen={showTeamModal}
+            onClose={() => setShowTeamModal(false)}
             teamId={teamId}
-            onClose={() => setShowInviteModal(false)}
+            teamMembers={teamMembers}
           />
         )}
       </main>
