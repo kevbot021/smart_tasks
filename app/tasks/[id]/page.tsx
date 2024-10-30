@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { createClient } from '@supabase/supabase-js'
-import type { Task, Subtask } from '@/types'
-import TaskDetailSkeleton from './loading'
+import type { Task, TaskContext } from '@/types'
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import AIChatDrawer from '@/components/AIChatDrawer';
 import { motion } from 'framer-motion'
 
 const supabase = createClient(
@@ -13,47 +14,64 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-interface TaskWithAssigner extends Task {
-  assigner?: {
-    name: string
-  }
-}
-
 export default function TaskDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const [task, setTask] = useState<TaskWithAssigner | null>(null)
+  const [task, setTask] = useState<Task | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isImageLoading, setIsImageLoading] = useState(true)
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false)
+  const [taskContext, setTaskContext] = useState<TaskContext | null>(null)
 
   useEffect(() => {
-    const fetchTask = async () => {
+    const fetchTaskDetails = async () => {
       try {
-        console.log('Fetching task details:', params.id)
         const { data: taskData, error: taskError } = await supabase
           .from('tasks')
           .select(`
             *,
             sub_tasks (*),
-            assigner:created_by_user_id (name)
+            assigner:created_by_user_id (
+              id,
+              name,
+              email
+            ),
+            assigned_user:assigned_user_id (
+              id,
+              name,
+              email
+            )
           `)
           .eq('id', params.id)
           .single()
 
         if (taskError) throw taskError
-        console.log('Task data received:', taskData)
+
+        // Format context for AI
+        const aiContext: TaskContext = {
+          task: {
+            description: taskData.description,
+            category: taskData.category || 'General',
+            status: taskData.is_complete ? 'completed' : 'in progress'
+          },
+          subtasks: taskData.sub_tasks?.map((st: any) => ({
+            description: st.description,
+            status: st.is_complete ? 'completed' : 'pending'
+          })) || []
+        }
+
         setTask(taskData)
+        setTaskContext(aiContext)
+        setIsLoading(false)
       } catch (error) {
-        console.error('Error fetching task:', error)
-      } finally {
+        console.error('Error fetching task details:', error)
         setIsLoading(false)
       }
     }
 
-    fetchTask()
+    fetchTaskDetails()
   }, [params.id])
 
   if (isLoading) {
-    return <TaskDetailSkeleton />
+    return <div>Loading...</div>
   }
 
   if (!task) {
@@ -78,13 +96,22 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
       exit={{ opacity: 0, y: -20 }}
       className="container mx-auto p-6 max-w-2xl"
     >
-      <Button 
-        onClick={() => router.back()}
-        variant="ghost"
-        className="mb-6"
-      >
-        ← Back
-      </Button>
+      <div className="flex justify-between items-center mb-6">
+        <Button 
+          onClick={() => router.back()}
+          variant="ghost"
+        >
+          ← Back
+        </Button>
+        
+        <Button
+          onClick={() => setIsAIChatOpen(true)}
+          variant="default"
+          className="bg-gradient-to-r from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800"
+        >
+          Get Help with AI
+        </Button>
+      </div>
 
       <div className="space-y-8">
         <motion.div
@@ -97,30 +124,6 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
             Assigned by: {task.assigner?.name || 'Unknown'}
           </p>
         </motion.div>
-
-        {task.cartoon_slides && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: isImageLoading ? 0 : 1 }}
-            transition={{ duration: 0.3 }}
-          >
-            <h2 className="text-xl font-semibold mb-4">Task Visualization</h2>
-            <div className="relative">
-              {isImageLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                </div>
-              )}
-              <img 
-                src={task.cartoon_slides} 
-                alt="Task visualization"
-                className="w-full rounded-lg shadow-lg"
-                onLoad={() => setIsImageLoading(false)}
-                style={{ opacity: isImageLoading ? 0 : 1 }}
-              />
-            </div>
-          </motion.div>
-        )}
 
         {task.sub_tasks && task.sub_tasks.length > 0 && (
           <motion.div
@@ -174,6 +177,15 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
           </motion.div>
         )}
       </div>
+
+      <ErrorBoundary>
+        {isAIChatOpen && taskContext && (
+          <AIChatDrawer
+            onClose={() => setIsAIChatOpen(false)}
+            taskContext={taskContext}
+          />
+        )}
+      </ErrorBoundary>
     </motion.div>
   )
 } 

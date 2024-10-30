@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import type { TaskContext } from '@/types'
 
-// Make sure OPENAI_API_KEY is set in your .env.local file
 if (!process.env.OPENAI_API_KEY) {
   throw new Error('Missing OPENAI_API_KEY environment variable');
 }
@@ -16,22 +16,35 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const DEFAULT_RESPONSE = {
+  question: "How would you like to break down this task?",
+  options: [
+    "Let's understand the main goal first",
+    "Break it into smaller steps",
+    "What resources do I need?"
+  ],
+  assessment: "continuing",
+  confidence_score: 0
+};
+
 export async function POST(req: Request) {
   try {
-    const { 
-      taskDescription, 
-      taskId, 
-      teamId, 
-      stage, 
-      subtasks: existingSubtasks,
-      category: initialCategory
-    } = await req.json()
+    const body = await req.json();
+    
+    if (body.threadId || body.taskContext) {
+      return handleAIChatRequest(body);
+    }
+    
+    const { taskDescription, taskId, stage } = body;
 
     if (!taskDescription || !taskId) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Missing required fields' }, 
+        { status: 400 }
+      );
     }
 
-    // Handle text generation (category and subtasks)
+    // Only generate text content (category and subtasks) during the 'text' stage
     if (stage === 'text') {
       const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
@@ -76,13 +89,7 @@ export async function POST(req: Request) {
 
       console.log('Processed data:', { category, subtasks });
 
-      // Update task with category
-      await supabase
-        .from('tasks')
-        .update({ category })
-        .eq('id', taskId);
-
-      // Insert subtasks
+      // Insert subtasks only during 'text' stage
       const subtaskData = subtasks.map(description => ({
         description,
         task_id: taskId,
@@ -96,102 +103,67 @@ export async function POST(req: Request) {
 
       if (subtaskError) throw subtaskError;
 
+      // Update task with category
+      const { error: updateError } = await supabase
+        .from('tasks')
+        .update({ category })
+        .eq('id', taskId);
+
+      if (updateError) throw updateError;
+
       return NextResponse.json({ 
         success: true, 
         category,
-        subtasks: insertedSubtasks
+        subtasks: insertedSubtasks,
       });
     }
 
-    // Handle media generation
+    // Handle media generation during 'media' stage
     if (stage === 'media') {
-      let categoryToUse = initialCategory;
-
-      if (!existingSubtasks || !categoryToUse) {
-        // Fetch the task data if category wasn't passed
-        const { data: taskData, error: taskError } = await supabase
-          .from('tasks')
-          .select('category')
-          .eq('id', taskId)
-          .single();
-
-        if (taskError) throw taskError;
-        if (!taskData) throw new Error('Task not found');
-
-        categoryToUse = taskData.category;
-      }
-
-      // Generate image
-      const imagePrompt = `Create a simple, cartoon-style image showing three panels: 1. ${existingSubtasks[0]}, 2. ${existingSubtasks[1]}, 3. ${existingSubtasks[2]}. Make it colorful and easy to understand.`;
+      // Generate audio summary
+      const audioSummaryText = `Task: ${taskDescription}. This is a ${body.category} task. It has ${body.subtasks.length} subtasks: ${body.subtasks.map((st: { description: string }) => st.description).join('. ')}`;
       
-      const imageResponse = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: imagePrompt,
-        n: 1,
-        size: "1024x1024",
-        quality: "standard",
-        style: "natural"
-      });
+      // Generate both audio and cartoon in parallel
+      const [mp3Response, cartoonResponse] = await Promise.all([
+        // Audio generation
+        openai.audio.speech.create({
+          model: "tts-1",
+          voice: "alloy",
+          input: audioSummaryText,
+        }),
+        // Cartoon generation
+        openai.images.generate({
+          model: "dall-e-3",
+          prompt: `Create a simple, cartoon-style visualization of this task: ${taskDescription}. Include visual representations of these subtasks: ${body.subtasks.map((st: { description: string }) => st.description).join(', ')}`,
+          size: "1024x1024",
+          quality: "standard",
+          n: 1,
+        })
+      ]);
 
-      const imageUrl = imageResponse.data[0]?.url;
-      if (!imageUrl) {
-        throw new Error('No image URL received from OpenAI');
-      }
-
-      // Download the image and upload to Supabase storage
-      const imageRes = await fetch(imageUrl);
-      const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
-      
-      const fileName = `task-${taskId}-${Date.now()}.png`;
-      const { data: uploadData, error: uploadError } = await supabase
-        .storage
-        .from('task-images')  // Make sure this bucket exists in Supabase
-        .upload(fileName, imageBuffer, {
-          contentType: 'image/png',
-          cacheControl: '3600'
-        });
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      // Get the public URL for the uploaded image
-      const { data: { publicUrl } } = supabase
-        .storage
-        .from('task-images')
-        .getPublicUrl(fileName);
-
-      // Generate audio with the correct category
-      const audioSummaryText = `Task: ${taskDescription}. This is a ${categoryToUse} task. It has ${existingSubtasks.length} subtasks: ${existingSubtasks.join('. ')}`;
-      
-      // Generate audio using OpenAI TTS
-      const mp3Response = await openai.audio.speech.create({
-        model: "tts-1",
-        voice: "alloy",
-        input: audioSummaryText,
-      });
-
-      // Convert the audio to base64
       const buffer = Buffer.from(await mp3Response.arrayBuffer());
       const base64Audio = buffer.toString('base64');
+      const cartoonUrl = cartoonResponse.data[0]?.url;
 
-      // Update task with media
-      await supabase
+      // Update task with both audio summary and cartoon slides
+      const { error: updateError } = await supabase
         .from('tasks')
         .update({ 
           audio_summary: base64Audio,
-          cartoon_slides: publicUrl
+          cartoon_slides: cartoonUrl
         })
         .eq('id', taskId);
 
+      if (updateError) throw updateError;
+
       return NextResponse.json({ 
-        success: true, 
+        success: true,
         audio_summary: base64Audio,
-        cartoon_slides: publicUrl
+        cartoon_slides: cartoonUrl
       });
     }
 
-    throw new Error('Invalid stage specified');
+    return NextResponse.json({ error: 'Invalid stage parameter' }, { status: 400 });
 
   } catch (error) {
     console.error('Error in generate-task-details:', error);
@@ -199,5 +171,162 @@ export async function POST(req: Request) {
       { error: 'Failed to generate task details', details: error }, 
       { status: 500 }
     );
+  }
+}
+
+// AI Chat request handler (separate function)
+async function handleAIChatRequest(body: any) {
+  try {
+    if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_ASSISTANT_ID) {
+      return NextResponse.json({
+        threadId: null,
+        message: JSON.stringify(DEFAULT_RESPONSE)
+      });
+    }
+
+    let thread;
+
+    try {
+      if (!body.threadId) {
+        thread = await openai.beta.threads.create();
+        console.log('New thread created:', thread.id);
+
+        await openai.beta.threads.messages.create(
+          thread.id,
+          {
+            role: "user",
+            content: JSON.stringify({
+              task: body.taskContext.task,
+              subtasks: body.taskContext.subtasks,
+              request: "Please help me analyze and break down this task."
+            })
+          }
+        );
+        console.log('Initial message added');
+      } else {
+        thread = { id: body.threadId };
+        if (body.message) {
+          await openai.beta.threads.messages.create(
+            thread.id,
+            {
+              role: "user",
+              content: `User selected: ${body.message}. Please continue analyzing the task based on this choice.`
+            }
+          );
+        }
+      }
+
+      const run = await openai.beta.threads.runs.create(
+        thread.id,
+        {
+          assistant_id: process.env.OPENAI_ASSISTANT_ID,
+          instructions: `
+            You are a task analysis assistant helping users break down their tasks.
+            
+            For the initial message:
+            1. Understand the task context
+            2. Ask a relevant question to help break down the task
+            3. Provide 2-4 specific response options
+            
+            For follow-up messages:
+            1. Consider the user's previous selection
+            2. Ask a more specific follow-up question
+            3. Provide new, relevant options based on their choice
+            
+            Always respond with a valid JSON object in this exact format:
+            {
+              "question": "Your specific question about the task",
+              "options": ["2-4 contextual response options"],
+              "assessment": "continuing",
+              "confidence_score": 0
+            }
+
+            Make each question and set of options unique and relevant to the conversation flow.
+            When appropriate, set assessment to "complete" to end the conversation.
+          `
+        }
+      );
+
+      let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+      let attempts = 0;
+      const maxAttempts = 30;
+
+      while (attempts < maxAttempts) {
+        console.log(`Run status (attempt ${attempts + 1}/${maxAttempts}):`, runStatus.status);
+
+        if (runStatus.status === 'completed') {
+          const messages = await openai.beta.threads.messages.list(thread.id);
+          const lastMessage = messages.data[0];
+
+          if (lastMessage.content[0].type === 'text') {
+            try {
+              const responseText = lastMessage.content[0].text.value;
+              const parsedResponse = JSON.parse(responseText);
+              
+              if (!parsedResponse.question || !Array.isArray(parsedResponse.options)) {
+                throw new Error('Invalid response format from AI');
+              }
+
+              return NextResponse.json({
+                threadId: thread.id,
+                message: responseText
+              });
+            } catch (error) {
+              console.error('Invalid response format:', error);
+              return NextResponse.json({
+                threadId: thread.id,
+                message: JSON.stringify(DEFAULT_RESPONSE)
+              });
+            }
+          }
+        }
+
+        if (runStatus.status === 'requires_action') {
+          const toolCalls = runStatus.required_action?.submit_tool_outputs.tool_calls;
+          if (toolCalls) {
+            const toolOutputs = toolCalls.map(toolCall => ({
+              tool_call_id: toolCall.id,
+              output: JSON.stringify({})
+            }));
+
+            await openai.beta.threads.runs.submitToolOutputs(
+              thread.id,
+              run.id,
+              { tool_outputs: toolOutputs }
+            );
+          }
+        }
+
+        if (runStatus.status === 'failed') {
+          console.error('Run failed:', runStatus.last_error);
+          return NextResponse.json({
+            threadId: thread.id,
+            message: JSON.stringify(DEFAULT_RESPONSE)
+          });
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+        runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+      }
+
+      return NextResponse.json({
+        threadId: thread.id,
+        message: JSON.stringify(DEFAULT_RESPONSE)
+      });
+
+    } catch (error) {
+      console.error('OpenAI API error:', error);
+      return NextResponse.json({
+        threadId: null,
+        message: JSON.stringify(DEFAULT_RESPONSE)
+      });
+    }
+  } catch (error) {
+    console.error('Error in AI chat request:', error);
+    return NextResponse.json({
+      threadId: null,
+      message: JSON.stringify(DEFAULT_RESPONSE)
+    });
   }
 }

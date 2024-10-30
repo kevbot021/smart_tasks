@@ -8,7 +8,7 @@ import AddTask from '../../components/AddTask'
 import InviteTeamMember from '../../components/InviteTeamMember'
 import { Button } from "@/components/ui/button"
 import { Settings } from 'lucide-react'
-import type { Task, Subtask } from '@/types'
+import type { Task, TeamMember } from '@/types'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,11 +22,6 @@ import { getColorForCategory } from '@/lib/utils'
 import TaskCard from '../../components/TaskCard'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
-interface TeamMember {
-  id: string
-  name: string
-}
 
 export default function ToDoPage() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -117,7 +112,17 @@ export default function ToDoPage() {
         .from('tasks')
         .select(`
           *,
-          sub_tasks (*)
+          sub_tasks (*),
+          assigner:created_by_user_id (
+            id,
+            name,
+            email
+          ),
+          assigned_user:assigned_user_id (
+            id,
+            name,
+            email
+          )
         `)
         .eq('team_id', teamId);
 
@@ -171,7 +176,7 @@ export default function ToDoPage() {
       }
 
       console.log(`✅ Fetched ${data?.length || 0} team members`);
-      setTeamMembers(data || []);
+      setTeamMembers(data as TeamMember[] || []);
     } catch (error) {
       console.error('❌ Error in fetchTeamMembers:', error);
     } finally {
@@ -185,7 +190,7 @@ export default function ToDoPage() {
       setFilteredTasks(tasks)
     } else {
       setFilteredTasks(tasks.filter(task => 
-        selectedCategories.includes(task.category) || 
+        (task.category && selectedCategories.includes(task.category)) || 
         (selectedCategories.includes('Completed') && task.is_complete)
       ))
     }
@@ -267,11 +272,11 @@ export default function ToDoPage() {
     await fetchTasks(userId, isAdmin, teamId)
   }
 
-  const handleAssignTask = async (taskId: string, assignedUserId: string) => {
+  const handleAssignTask = async (taskId: string, assignedUserId: string | null) => {
     try {
       const { error } = await supabase
         .from('tasks')
-        .update({ assigned_user_id: assignedUserId === 'unassigned' ? null : assignedUserId })
+        .update({ assigned_user_id: assignedUserId })
         .eq('id', taskId)
 
       if (error) {
@@ -281,13 +286,13 @@ export default function ToDoPage() {
 
       setTasks(prevTasks => prevTasks.map(task => 
         task.id === taskId 
-          ? { ...task, assigned_user_id: assignedUserId === 'unassigned' ? null : assignedUserId }
+          ? { ...task, assigned_user_id: assignedUserId }
           : task
       ))
 
       setFilteredTasks(prevFilteredTasks => prevFilteredTasks.map(task => 
         task.id === taskId 
-          ? { ...task, assigned_user_id: assignedUserId === 'unassigned' ? null : assignedUserId }
+          ? { ...task, assigned_user_id: assignedUserId }
           : task
       ))
 
