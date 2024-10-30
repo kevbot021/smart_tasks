@@ -11,6 +11,17 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+const serviceClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
+
 export default function AcceptInvitePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -87,26 +98,30 @@ export default function AcceptInvitePage() {
       })
 
       if (signUpError) throw signUpError
+      if (!authData.user) throw new Error('Failed to create user')
 
-      // 2. Create the user in the users table
-      const { error: userError } = await supabase
+      // 2. Create the user in the users table using service role client
+      const { error: userError } = await serviceClient
         .from('users')
         .insert({
-          id: authData.user!.id,
+          id: authData.user.id,
           email: email,
           name: name,
           team_id: invitation.team_id,
           role: 'member'
         })
 
-      if (userError) throw userError
+      if (userError) {
+        console.error('Error creating user record:', userError)
+        throw userError
+      }
 
-      // 3. Only after user is created, update invitation status
-      const { error: inviteError } = await supabase
+      // 3. Update invitation status
+      const { error: inviteError } = await serviceClient
         .from('invitations')
         .update({ 
           status: 'accepted',
-          name: name // Update the name in invitations table too
+          name: name
         })
         .eq('id', invitation.id)
 
